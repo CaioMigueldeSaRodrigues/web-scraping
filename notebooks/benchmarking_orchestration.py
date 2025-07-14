@@ -1,9 +1,9 @@
 # COMMAND ----------
-# DBTITLE 1,Install Dependencies
+# DBTITLE 1,Install Project Dependencies
 # MAGIC %pip install pydantic-settings requests beautifulsoup4
 
 # COMMAND ----------
-# DBTITLE 2,Setup & Widgets
+# DBTITLE 2,Setup Environment and Parameters
 import sys
 import os
 from pyspark.sql import SparkSession
@@ -15,7 +15,6 @@ project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Imports corrigidos para serem absolutos a partir do pacote 'src'.
 from src.config.settings import settings
 from src.logger import get_logger
 from src.scraping.scraper import Scraper
@@ -30,7 +29,7 @@ logger = get_logger("OrchestrationNotebook")
 spark = SparkSession.builder.getOrCreate()
 
 # COMMAND ----------
-# DBTITLE 2,Execute Scraping
+# DBTITLE 3,Execute Scraping
 logger.info(f"Starting pipeline for site '{site_name}' with search term: '{search_term}'")
 
 try:
@@ -41,7 +40,6 @@ except KeyError:
 search_url = f"{site_config['base_url']}{search_term.replace(' ', '%20')}"
 
 try:
-    # A instância do Scraper agora busca o user_agent do arquivo de configuração.
     scraper = Scraper(user_agent=settings.USER_AGENT)
     scraped_data = scraper.scrape(site_name=site_name, url=search_url)
     logger.info("Scraping completed.")
@@ -51,20 +49,25 @@ except Exception as e:
     dbutils.notebook.exit(f"Pipeline failed: {e}")
 
 # COMMAND ----------
-# DBTITLE 3,Process and Save Data
+# DBTITLE 4,Process and Save Data
 if scraped_data:
     logger.info(f"Processing {len(scraped_data)} products from {site_name}.")
+    
     pdf = pd.DataFrame(scraped_data)
     sdf = spark.createDataFrame(pdf)
+    
     sdf_final = sdf.withColumn("search_term", lit(search_term)) \
                    .withColumn("scraped_at", current_timestamp())
+    
     table_name = site_config['table_name']
     sdf_final.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table_name)
+    
     logger.info(f"Successfully wrote data to Delta table: {table_name}")
     display(sdf_final)
 else:
     logger.warning(f"No data returned from {site_name} scraper.")
 
 # COMMAND ----------
+# DBTITLE 5,Finalize
 logger.info("Pipeline finished successfully.")
 dbutils.notebook.exit("Success") 
