@@ -6,24 +6,23 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import lit, current_timestamp
 import pandas as pd
 
-# Adiciona o diretório 'src' ao path para permitir importações
+# Adiciona a raiz do projeto ao sys.path para permitir importações absolutas do pacote 'src'.
 project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
-src_path = os.path.join(project_root, 'src')
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
+# Imports corrigidos para serem absolutos a partir do pacote 'src'.
 from src.config.settings import settings
-from src.logger_config import logger
+from src.logger import get_logger
 from src.scraping.scraper import Scraper
 
-# Widgets para controle dinâmico da execução.
 dbutils.widgets.text("site_name", "magazine_luiza", "Target site name (e.g., magazine_luiza)")
 dbutils.widgets.text("search_term", "iphone 15", "Product Search Term")
 
-# Parâmetros obtidos de widgets.
 site_name = dbutils.widgets.get("site_name")
 search_term = dbutils.widgets.get("search_term")
 
+logger = get_logger("OrchestrationNotebook")
 spark = SparkSession.builder.getOrCreate()
 
 # COMMAND ----------
