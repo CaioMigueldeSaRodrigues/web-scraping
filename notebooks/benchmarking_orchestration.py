@@ -7,10 +7,8 @@
 import sys
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import lit, current_timestamp
 import pandas as pd
 
-# Adiciona a raiz do projeto ao sys.path para permitir importações absolutas do pacote 'src'.
 project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -19,53 +17,52 @@ from src.config.settings import settings
 from src.logger import get_logger
 from src.scraping.scraper import Scraper
 
-dbutils.widgets.text("site_name", "magazine_luiza", "Target site name (e.g., magazine_luiza)")
-dbutils.widgets.text("search_term", "iphone 15", "Product Search Term")
-
-site_name = dbutils.widgets.get("site_name")
-search_term = dbutils.widgets.get("search_term")
+dbutils.widgets.text("max_pages_per_category", "5", "Max pages to scrape per category")
+max_pages = int(dbutils.widgets.get("max_pages_per_category"))
 
 logger = get_logger("OrchestrationNotebook")
 spark = SparkSession.builder.getOrCreate()
 
 # COMMAND ----------
-# DBTITLE 3,Execute Scraping
-logger.info(f"Starting pipeline for site '{site_name}' with search term: '{search_term}'")
+# DBTITLE 3,Execute Scraping Across All Categories
+logger.info("Starting scraping pipeline for all configured categories.")
+scraper = Scraper(user_agent=settings.USER_AGENT)
+all_products_data = []
 
-try:
-    site_config = settings.SCRAPING_CONFIG[site_name]
-except KeyError:
-    dbutils.notebook.exit(f"ERROR: Site '{site_name}' not found in configuration.")
-
-search_url = f"{site_config['base_url']}{search_term.replace(' ', '%20')}"
-
-try:
-    scraper = Scraper(user_agent=settings.USER_AGENT)
-    scraped_data = scraper.scrape(site_name=site_name, url=search_url)
-    logger.info("Scraping completed.")
-
-except Exception as e:
-    logger.critical(f"A critical error occurred during scraping: {e}", exc_info=True)
-    dbutils.notebook.exit(f"Pipeline failed: {e}")
+for category_name, base_url in settings.CATEGORIES.items():
+    logger.info(f"--- Processing Category: {category_name} ---")
+    products = scraper.scrape_category(base_url=base_url, max_pages=max_pages)
+    
+    # Adiciona a informação da categoria a cada produto
+    for product in products:
+        product['category'] = category_name
+        
+    all_products_data.extend(products)
+    logger.info(f"Found {len(products)} products in '{category_name}'. Total so far: {len(all_products_data)}.")
 
 # COMMAND ----------
-# DBTITLE 4,Process and Save Data
-if scraped_data:
-    logger.info(f"Processing {len(scraped_data)} products from {site_name}.")
+# DBTITLE 4,Process and Save Data to a Single Delta Table
+if all_products_data:
+    logger.info(f"Processing a total of {len(all_products_data)} products.")
     
-    pdf = pd.DataFrame(scraped_data)
-    sdf = spark.createDataFrame(pdf)
+    pdf = pd.DataFrame(all_products_data)
+    spark_df = spark.createDataFrame(pdf)
     
-    sdf_final = sdf.withColumn("search_term", lit(search_term)) \
-                   .withColumn("scraped_at", current_timestamp())
+    table_path = settings.DELTA_TABLE_PATH
+    logger.info(f"Writing data to Delta table: {table_path}")
     
-    table_name = site_config['table_name']
-    sdf_final.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table_name)
+    # Escreve na tabela única, particionando por categoria para otimizar consultas
+    spark_df.write \
+        .format("delta") \
+        .mode("overwrite") \
+        .option("overwriteSchema", "true") \
+        .partitionBy("category") \
+        .saveAsTable(table_path)
     
-    logger.info(f"Successfully wrote data to Delta table: {table_name}")
-    display(sdf_final)
+    logger.info("Data successfully saved.")
+    display(spark_df)
 else:
-    logger.warning(f"No data returned from {site_name} scraper.")
+    logger.warning("No products were scraped across all categories.")
 
 # COMMAND ----------
 # DBTITLE 5,Finalize
