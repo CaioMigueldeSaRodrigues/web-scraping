@@ -36,6 +36,8 @@ pip install poetry
 poetry install
 ```
 
+> **Nota:** O projeto depende de `pydantic-settings`, `requests`, `beautifulsoup4` e outras bibliotecas listadas no `pyproject.toml`. Todas são instaladas automaticamente pelo Poetry.
+
 ### 2. Lint, formatação e checagem de tipos
 ```bash
 poetry run ruff check .           # Linting
