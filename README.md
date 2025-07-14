@@ -8,6 +8,7 @@ Este projeto realiza benchmarking de produtos entre marketplaces (ex: Magalu) ut
 webscrapingmkt/
 │
 ├── notebooks/           # Notebooks de orquestração (Databricks)
+│   └── benchmarking_orchestration.py  # Notebook principal de orquestração (Databricks)
 ├── src/                 # Módulos Python reutilizáveis (scraping, processamento, matching, relatórios)
 ├── tests/               # Testes unitários (pytest)
 ├── config.py            # Configurações centralizadas
@@ -48,7 +49,7 @@ poetry run pytest
 ```
 
 ### 4. Orquestração
-- Use os notebooks em `notebooks/` para orquestrar o pipeline.
+- Use o notebook `notebooks/benchmarking_orchestration.py` para orquestrar o pipeline no Databricks.
 - Os módulos em `src/` podem ser usados em scripts ou notebooks.
 
 ## Integração Contínua (CI)
