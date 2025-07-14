@@ -24,22 +24,30 @@ jobs:
 
     - name: Install Poetry
       uses: snok/install-poetry@v1
-      with:
-        virtualenvs-create: true
-        virtualenvs-in-project: true
 
     - name: Load cached venv
       id: cached-poetry-dependencies
       uses: actions/cache@v3
       with:
         path: .venv
-        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
 
     - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: poetry install --no-interaction --no-root
+      # if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true' # Desabilitado temporariamente para garantir instalação
+      run: poetry install --no-interaction
+
+    - name: Run Linter (Ruff)
+      run: |
+        poetry run ruff check .
+
+    - name: Run Formatter Check (Ruff)
+      run: |
+        poetry run ruff format --check .
+
+    - name: Run Type Checker (Mypy)
+      run: |
+        poetry run mypy src
 
     - name: Run Tests with Pytest
       run: |
-        source .venv/bin/activate
-        pytest 
+        poetry run pytest 

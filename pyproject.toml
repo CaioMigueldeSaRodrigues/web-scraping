@@ -1,0 +1,32 @@
+[project]
+name = "webscrapingmkt"
+version = "0.1.0"
+description = "Benchmarking de produtos entre marketplaces com scraping, embeddings e matching."
+authors = ["Caio Miguel de Sá Rodrigues <caiomiguel@bemol.com.br>"]
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.urls]
+"Homepage" = "https://github.com/CaioMigueldeSaRodrigues/web-scraping"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+pyspark = "*"
+pandas = "*"
+numpy = "*"
+requests = "*"
+beautifulsoup4 = "*"
+sentence-transformers = "*"
+scikit-learn = "*"
+openpyxl = "*"
+mlflow = "*"
+psycopg2-binary = "*"
+sqlalchemy = "*"
+sendgrid = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api" 

@@ -1,0 +1,33 @@
+# ruff.toml
+[lint]
+# Regras baseadas em flake8, isort, e outras ferramentas populares.
+select = ["E", "F", "W", "I", "C90"]
+ignore = []
+
+# Exclui diretórios que não precisam ser verificados.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+[format]
+# Formatação similar ao Black.
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf" 
