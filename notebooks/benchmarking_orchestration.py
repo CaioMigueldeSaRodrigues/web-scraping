@@ -1,5 +1,9 @@
 # COMMAND ----------
-# DBTITLE 1,Setup & Widgets
+# DBTITLE 1,Install Dependencies
+# MAGIC %pip install pydantic-settings requests beautifulsoup4
+
+# COMMAND ----------
+# DBTITLE 2,Setup & Widgets
 import sys
 import os
 from pyspark.sql import SparkSession
