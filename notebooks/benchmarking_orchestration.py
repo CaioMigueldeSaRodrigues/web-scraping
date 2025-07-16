@@ -70,3 +70,24 @@ else:
 # DBTITLE 5,Finalize
 logger.info("Pipeline finished successfully.")
 dbutils.notebook.exit("Success") 
+
+# Célula de verificação
+logger_file_path = "/Workspace/Users/caiomiguel@bemol.com.br/web-scraping/src/logger/__init__.py"
+
+print(f"--- VERIFICANDO CONTEÚDO DO ARQUIVO: {logger_file_path} ---")
+
+try:
+    with open(logger_file_path, 'r') as f:
+        content = f.read()
+    
+    if not content.strip():
+        print("\n>>> RESULTADO: O ARQUIVO ESTÁ COMPLETAMENTE VAZIO. <<<")
+        print(">>> AÇÃO: Copie e cole o código do logger no arquivo e salve-o. <<<")
+    else:
+        print("\n--- CONTEÚDO ATUAL DO ARQUIVO ---")
+        print(content)
+        print("---------------------------------")
+        print("\n>>> RESULTADO: O arquivo contém código. Verifique se a função 'def get_logger(...)' está presente e escrita corretamente. <<<")
+
+except FileNotFoundError:
+    print(f"\n>>> ERRO CRÍTICO: O arquivo não foi encontrado no caminho especificado. <<<") 
