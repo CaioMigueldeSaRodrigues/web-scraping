@@ -2,6 +2,9 @@
 %pip install pydantic-settings
 
 # COMMAND ----------
+dbutils.library.restartPython()
+
+# COMMAND ----------
 # DBTITLE 1,Install Project Dependencies
 # MAGIC %pip install requests beautifulsoup4
 
