@@ -1,5 +1,4 @@
 # COMMAND ----------
-# DBTITLE 0,Install pydantic-settings
 # MAGIC %pip install pydantic-settings
 
 # COMMAND ----------
