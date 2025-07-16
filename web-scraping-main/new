@@ -1,0 +1,77 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from bs4 import BeautifulSoup
+import pandas as pd
+import time
+import re
+
+options = webdriver.ChromeOptions()
+options.add_argument("--start-maximized")
+options.add_argument("--disable-blink-features=AutomationControlled")
+driver = webdriver.Chrome(options=options)
+
+driver.get("https://www.temu.com/br")
+time.sleep(5)
+
+# Clica no modal se aparecer
+try:
+    modal = WebDriverWait(driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'popup-close')]"))
+    )
+    modal.click()
+    print("Modal fechado.")
+except TimeoutException:
+    print("Modal não apareceu.")
+
+# Scroll até o final da página clicando em "Ver mais"
+while True:
+    try:
+        ver_mais = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[contains(text(), 'Ver mais')]"))
+        )
+        ver_mais.click()
+        print("Clique em 'Ver mais'")
+        time.sleep(3)
+    except TimeoutException:
+        print("Todos os produtos carregados.")
+        break
+
+# Extrai HTML da página
+html = driver.page_source
+soup = BeautifulSoup(html, 'html.parser')
+
+data = []
+cards = soup.find_all("div", class_=re.compile("^_6q6qVUF5.*goodContainer"))
+print(f"Cards encontrados: {len(cards)}")
+
+for card in cards:
+    try:
+        title_tag = card.find("a", class_=re.compile("_2Tl9qLr1"))
+        title = title_tag.text.strip() if title_tag else None
+
+        price_tag = card.find("div", class_=re.compile("_382YgpSF"))
+        price = price_tag.text.strip() if price_tag else None
+
+        img_tag = card.find("img")
+        img = img_tag['src'] if img_tag and 'src' in img_tag.attrs else None
+
+        data.append({
+            "title": title,
+            "price": price,
+            "image": img
+        })
+    except Exception as e:
+        print(f"Erro ao extrair card: {e}")
+
+driver.quit()
+
+if data:
+    df = pd.DataFrame(data)
+    print(df.head())
+    df.to_excel("ofertas_temu.xlsx", index=False)
+    print("Arquivo 'ofertas_temu.xlsx' salvo com sucesso!")
+else:
+    print("Nenhum produto extraído. Verifique os seletores ou possíveis bloqueios.")
