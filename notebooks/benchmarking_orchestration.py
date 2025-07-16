@@ -1,5 +1,5 @@
 # COMMAND ----------
-# MAGIC %pip install pydantic-settings
+%pip install pydantic-settings
 
 # COMMAND ----------
 # DBTITLE 1,Install Project Dependencies
