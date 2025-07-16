@@ -1,6 +1,10 @@
 # COMMAND ----------
+# DBTITLE 0,Install pydantic-settings
+# MAGIC %pip install pydantic-settings
+
+# COMMAND ----------
 # DBTITLE 1,Install Project Dependencies
-# MAGIC %pip install pydantic-settings requests beautifulsoup4
+# MAGIC %pip install requests beautifulsoup4
 
 # COMMAND ----------
 # DBTITLE 2,Setup Environment and Parameters
