@@ -1,13 +1,17 @@
 import sys
 import os
 
-# Adiciona o diretório raiz do repositório ao path do sistema
-# Isso é crucial para que o Python encontre o pacote 'src'
-repo_path = os.path.dirname(os.getcwd())
-if repo_path not in sys.path:
-    sys.path.append(repo_path)
+# --- Bloco de Gerenciamento de Path ---
+# Adiciona o diretório raiz do projeto ao path do Python.
+# Isso garante que o pacote 'src' possa ser importado.
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+# ------------------------------------
 
-# Agora, importa e executa a função principal do projeto
 from src.main import run_pipeline
 
-run_pipeline() 
+if __name__ == "__main__":
+    print("Iniciando a execução do pipeline a partir de run.py...")
+    run_pipeline()
+    print("Execução do pipeline concluída.") 
