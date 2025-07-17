@@ -56,6 +56,6 @@ SIMILARITY_THRESHOLD = 0.85
 # --- Reporting & Email ---
 # --- USO DA FUNÇÃO COM O ESCOPO E CHAVE CORRETOS ---
 SENDGRID_API_KEY = get_secret(scope=SECRET_SCOPE, key=SENDGRID_API_KEY_NAME)
-FROM_EMAIL = "seu_email_corporativo@bemol.com.br"
-TO_EMAILS = ["equipe.comercial@bemol.com.br"]
+FROM_EMAIL = "caiomiguel@bemol.com.br"
+TO_EMAILS = ["gabrielbarros@bemol.com.br"]
 EMAIL_SUBJECT = "Análise de Concorrência de Preços - Magazine Luiza" 
