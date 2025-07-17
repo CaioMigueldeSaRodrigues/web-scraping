@@ -1,26 +1,63 @@
-# KPI & BI - Documentação da Fonte de Dados
+# Análise de Concorrência - Documentação de Dados
 
-A fonte de dados para o BI é a tabela `relatorio_concorrencia.xlsx` gerada pelo pipeline.
+## Visão Geral
+Este projeto automatiza a comparação de preços e catálogo entre a Bemol (VTEX) e o concorrente Magazine Luiza. O pipeline realiza scraping, processamento de similaridade de produtos via NLP e gera dois produtos de dados distintos para diferentes públicos.
 
-### Colunas Relevantes
+---
 
-| Coluna | Descrição | Medida Power BI Sugerida (DAX) |
-| :--- | :--- | :--- |
-| `produto_site` | Nome do produto no concorrente. | |
-| `similaridade` | Score de similaridade (0 a 1). | `Avg Similarity = AVERAGE('Relatorio'[similaridade])` |
-| `preco_site` | Preço no concorrente. | |
-| `preco_tabela` | Nosso preço. | |
-| `diferencial_percentual` | Variação de preço. Negativo = mais baratos. | `Avg Price Difference % = AVERAGE('Relatorio'[diferencial_percentual])` |
-| `categoria_site` | Categoria do produto no concorrente. | |
-| `exclusivo` | (TRUE/FALSE) Se o produto só existe no concorrente. | `Count of Exclusives = CALCULATE(COUNTROWS('Relatorio'), 'Relatorio'[exclusivo] = TRUE())` |
+## Produtos de Dados Gerados
 
-### Arquitetura de Dashboard Sugerida
+### Produto 1: Tabela Analítica (Formato Largo)
+Esta é a fonte de verdade para análises internas, BI e Data Science. Cada linha representa um par de produtos comparados.
 
-**Power BI / Tableau** conectado diretamente à tabela Delta final que pode ser gerada a partir do `final_report_df`. Isso permite atualização automática.
+- **Propósito:** Análise de dados, dashboards em Power BI/Tableau, estudos de precificação.
+- **Formato de Entrega:** Tabela Delta (ex: `silver.analise_concorrencia_magalu`).
+- **Schema da Tabela:**
+  | Coluna | Tipo de Dado | Descrição |
+  | :--- | :--- | :--- |
+  | `produto_site` | `string` | Título do produto no site concorrente (Magalu). |
+  | `produto_tabela` | `string` | Título do produto correspondente na nossa base (Bemol/VTEX). |
+  | `similaridade` | `double` | Score de similaridade de cosseno (0 a 1) entre os títulos. |
+  | `preco_site` | `double` | Preço do produto no concorrente. |
+  | `preco_tabela` | `double` | Nosso preço para o produto. |
+  | `diferencial_percentual` | `double` | Variação percentual de preço: `((preco_site - preco_tabela) / preco_tabela)`. Negativo significa que estamos mais baratos. |
+  | `url_site` | `string` | Link para o produto no concorrente. |
+  | `url_tabela` | `string` | Link para o nosso produto. |
+  | `categoria_site` | `string` | Categoria do produto extraída do concorrente. |
+  | `id_tabela` | `string` | ID do nosso produto na base de dados. |
+  | `exclusivo` | `boolean` | `True` se o produto só existe no site concorrente. |
 
-### Indicadores Chave
+### Produto 2: Relatório de Negócios (Formato Longo)
+Este é um relatório formatado para fácil consumo pelas equipes de Comercial e Marketing, entregue via email. O formato é otimizado para visualização e não para análise de dados.
 
-1.  **KPI: Nº de Exclusivos do Concorrente:** `COUNTROWS(FILTER('Relatorio', 'Relatorio'[exclusivo] = TRUE()))`
-2.  **Gráfico de Barras: Top 10 Produtos Onde Estamos Mais Caros:** Filtrar `diferencial_percentual > 0` e ordenar.
-3.  **Gráfico de Barras: Top 10 Produtos Onde Estamos Mais Baratos:** Filtrar `diferencial_percentual < 0` e ordenar.
-4.  **Tabela: Lista de Exclusivos para Análise de Compra:** Filtrar `exclusivo = TRUE()` e ordenar por preço. 
+- **Propósito:** Tomada de decisão rápida, identificação de oportunidades, análise de catálogo.
+- **Formato de Entrega:** Planilha Excel (`.xlsx`) em anexo de email.
+- **Schema da Planilha:**
+  | Coluna | Descrição |
+  | :--- | :--- |
+  | `title` | Título mestre do produto (baseado no concorrente). |
+  | `marketplace` | Indica se a linha se refere a 'Bemol' ou 'Magalu'. |
+  | `price` | Preço do produto no respectivo marketplace. |
+  | `url` | Link do produto no respectivo marketplace. |
+  | `exclusividade` | "Sim" se o produto só existe no concorrente; "Não" caso contrário. |
+  | `diferenca_percentual` | A diferença de preço, aplicada a ambas as linhas do par. |
+
+---
+
+## Estratégias de Análise e KPIs (Power BI, usando a Tabela Analítica)
+
+**Medidas DAX Sugeridas:**
+- **Contagem de Exclusivos:**
+  `Exclusivos Concorrente = CALCULATE(COUNTROWS('TabelaAnalitica'), 'TabelaAnalitica'[exclusivo] = TRUE())`
+- **Diferencial de Preço Médio:**
+  `Avg Price Diff % = AVERAGE('TabelaAnalitica'[diferencial_percentual])`
+- **Contagem de Produtos Mais Caros:**
+  `Produtos Mais Caros (Nós) = CALCULATE(COUNTROWS('TabelaAnalitica'), 'TabelaAnalitica'[diferencial_percentual] < 0)`
+- **Contagem de Produtos Mais Baratos:**
+  `Produtos Mais Baratos (Nós) = CALCULATE(COUNTROWS('TabelaAnalitica'), 'TabelaAnalitica'[diferencial_percentual] > 0)`
+
+**Visualizações Recomendadas:**
+1. **Cartão (KPI):** `Exclusivos Concorrente`.
+2. **Gráfico de Barras:** Top 10 Produtos com maior `diferencial_percentual` (onde estamos mais baratos).
+3. **Gráfico de Barras:** Top 10 Produtos com menor `diferencial_percentual` (onde estamos mais caros).
+4. **Tabela:** Lista de produtos exclusivos (`exclusivo = TRUE()`), com `produto_site`, `preco_site`, `categoria_site` e `url_site`, para análise de potencial de inclusão no catálogo. 

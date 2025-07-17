@@ -8,17 +8,23 @@ from src.config import EMBEDDING_MODEL, SIMILARITY_THRESHOLD
 def generate_embeddings(df: pd.DataFrame, text_column: str) -> pd.DataFrame:
     logging.info(f"Gerando embeddings para a coluna '{text_column}' com '{EMBEDDING_MODEL}'...")
     model = SentenceTransformer(EMBEDDING_MODEL)
-    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cuda') # Use 'cuda' se tiver GPU
+    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cuda')
     df['embedding'] = list(embeddings)
     return df
 
 def find_similar_products(df_site: pd.DataFrame, df_tabela: pd.DataFrame) -> pd.DataFrame:
-    if df_site.empty or df_tabela.empty:
-        logging.warning("Um dos DataFrames está vazio. Retornando apenas os produtos exclusivos do site.")
+    """Gera a tabela analítica (formato largo)."""
+    if df_site.empty:
+        logging.error("DataFrame do site está vazio. Não é possível continuar.")
+        return pd.DataFrame()
+    
+    if df_tabela.empty:
+        logging.warning("DataFrame da tabela interna está vazio. Todos os produtos do site serão marcados como exclusivos.")
         df_site['exclusivo'] = True
-        return df_site[['titulo_site', 'preco_site', 'url_site', 'categoria_site', 'exclusivo']]
+        df_site['similaridade'] = 0.0
+        return df_site.rename(columns={'titulo_site': 'produto_site', 'preco_site': 'preco_site', 'url_site': 'url_site'})
 
-    logging.info("Calculando similaridade de cosseno...")
+    logging.info("Calculando similaridade e gerando tabela analítica...")
     site_embeddings = np.array(df_site['embedding'].tolist())
     tabela_embeddings = np.array(df_tabela['embedding'].tolist())
     similarity_matrix = cosine_similarity(site_embeddings, tabela_embeddings)
@@ -33,7 +39,7 @@ def find_similar_products(df_site: pd.DataFrame, df_tabela: pd.DataFrame) -> pd.
         if similarity_score >= SIMILARITY_THRESHOLD:
             site_product = df_site.iloc[i]
             tabela_product = df_tabela.iloc[best_match_idx]
-            price_diff = ((site_product['preco_site'] - tabela_product['preco_tabela']) / tabela_product['preco_tabela']) * 100
+            price_diff = ((site_product['preco_site'] - tabela_product['preco_tabela']) / tabela_product['preco_tabela']) * 100 if tabela_product['preco_tabela'] else 0
             
             results.append({
                 'produto_site': site_product['titulo_site'],
@@ -43,6 +49,7 @@ def find_similar_products(df_site: pd.DataFrame, df_tabela: pd.DataFrame) -> pd.
                 'preco_tabela': tabela_product['preco_tabela'],
                 'diferencial_percentual': price_diff,
                 'url_site': site_product['url_site'],
+                'url_tabela': tabela_product['url_tabela'],
                 'categoria_site': site_product['categoria_site'],
                 'id_tabela': tabela_product['id_tabela'],
                 'exclusivo': False
@@ -53,11 +60,52 @@ def find_similar_products(df_site: pd.DataFrame, df_tabela: pd.DataFrame) -> pd.
     for i in exclusive_site_indices:
         site_product = df_site.iloc[i]
         results.append({
-            'produto_site': site_product['titulo_site'],
-            'produto_tabela': None, 'similaridade': 0, 'preco_site': site_product['preco_site'],
-            'preco_tabela': None, 'diferencial_percentual': None, 'url_site': site_product['url_site'],
-            'categoria_site': site_product['categoria_site'], 'id_tabela': None, 'exclusivo': True
+            'produto_site': site_product['titulo_site'], 'produto_tabela': None, 'similaridade': 0, 
+            'preco_site': site_product['preco_site'], 'preco_tabela': None, 'diferencial_percentual': None, 
+            'url_site': site_product['url_site'], 'url_tabela': None, 'categoria_site': site_product['categoria_site'], 
+            'id_tabela': None, 'exclusivo': True
         })
 
     final_df = pd.DataFrame(results)
-    return final_df.sort_values(by=['exclusivo', 'diferencial_percentual'], ascending=[True, False]) 
+    return final_df.sort_values(by=['exclusivo', 'diferencial_percentual'], ascending=[True, False])
+
+def format_report_for_business(df_analytical: pd.DataFrame) -> pd.DataFrame:
+    """Transforma a tabela analítica (larga) no formato de relatório para negócios (longo)."""
+    logging.info("Formatando dados para o relatório de negócios...")
+    business_rows = []
+    
+    for _, row in df_analytical.iterrows():
+        diff_percent = f"{row['diferencial_percentual']:.2f}%" if pd.notna(row['diferencial_percentual']) else None
+        exclusividade_str = "Sim" if row['exclusivo'] else "Não"
+
+        if not row['exclusivo']:
+            # Linha para Bemol (VTEX)
+            business_rows.append({
+                'title': row['produto_site'], # Usamos o título do site como mestre
+                'marketplace': 'Bemol',
+                'price': row['preco_tabela'],
+                'url': row['url_tabela'],
+                'exclusividade': exclusividade_str,
+                'diferenca_percentual': diff_percent
+            })
+            # Linha para Magalu
+            business_rows.append({
+                'title': row['produto_site'],
+                'marketplace': 'Magalu',
+                'price': row['preco_site'],
+                'url': row['url_site'],
+                'exclusividade': exclusividade_str,
+                'diferenca_percentual': diff_percent
+            })
+        else:
+            # Linha apenas para o produto exclusivo da Magalu
+            business_rows.append({
+                'title': row['produto_site'],
+                'marketplace': 'Magalu',
+                'price': row['preco_site'],
+                'url': row['url_site'],
+                'exclusividade': exclusividade_str,
+                'diferenca_percentual': 'N/A'
+            })
+            
+    return pd.DataFrame(business_rows) 
