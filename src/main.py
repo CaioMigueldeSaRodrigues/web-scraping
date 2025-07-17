@@ -1,5 +1,16 @@
-from pyspark.sql import SparkSession
+import sys
+import os
 import logging
+from pyspark.sql import SparkSession
+
+# --- Bloco de Gerenciamento de Path ---
+# Garante que o Python encontre os outros módulos no pacote 'src'
+# quando este script é executado diretamente.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+# ------------------------------------
+
 from src.scraping import scrape_and_save_all_categories, load_scraped_data, load_databricks_table
 from src.data_processing import generate_embeddings, find_similar_products, format_report_for_business
 from src.reporting import generate_excel_report, generate_html_report, send_email_report
@@ -22,16 +33,13 @@ def run_pipeline():
     df_site_embedded = generate_embeddings(df_site_pandas, 'titulo_site')
     df_tabela_embedded = generate_embeddings(df_tabela_pandas, 'titulo_tabela')
 
-    # 3. Geração do Relatório Analítico (Produto 1)
+    # 3. Geração do Relatório Analítico
     analytical_report_df = find_similar_products(df_site_embedded, df_tabela_embedded)
     if analytical_report_df.empty:
         logging.warning("Nenhum resultado gerado na análise. Encerrando pipeline.")
         return
 
-    # Opcional: Salvar a tabela analítica em Delta para o BI
-    # spark.createDataFrame(analytical_report_df).write.format("delta").mode("overwrite").saveAsTable("silver.analise_concorrencia_magalu")
-    
-    # 4. Formatação do Relatório de Negócios (Produto 2)
+    # 4. Formatação do Relatório de Negócios
     business_report_df = format_report_for_business(analytical_report_df)
     
     # 5. Geração de Outputs para as equipes
