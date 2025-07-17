@@ -1,10 +1,10 @@
 import sys
 import os
 
-# --- Bloco de Gerenciamento de Path ---
-# Adiciona o diretório raiz do projeto ao path do Python.
+# --- Bloco de Gerenciamento de Path (CORRIGIDO) ---
+# Usa os.getcwd() que, no contexto de um Job, aponta para a raiz do repositório.
 # Isso garante que o pacote 'src' possa ser importado.
-project_root = os.path.dirname(os.path.abspath(__file__))
+project_root = os.getcwd()
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 # ------------------------------------
@@ -12,6 +12,6 @@ if project_root not in sys.path:
 from src.main import run_pipeline
 
 if __name__ == "__main__":
-    print("Iniciando a execução do pipeline a partir de run.py...")
+    print(f"Iniciando a execução do pipeline a partir de run.py. CWD: {project_root}")
     run_pipeline()
     print("Execução do pipeline concluída.") 
