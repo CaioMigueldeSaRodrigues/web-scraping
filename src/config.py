@@ -13,21 +13,24 @@ def get_dbutils():
         return None
 
 def get_secret(scope: str, key: str) -> str | None:
-    """Obtém um segredo do Databricks Secrets ou de uma variável de ambiente como fallback."""
+    """Obtém um segredo do Databricks Secrets, conforme o padrão especificado."""
     dbutils = get_dbutils()
     if dbutils:
         try:
             logging.info(f"Buscando segredo '{key}' no escopo '{scope}' do Databricks.")
+            # --- A CHAMADA CRÍTICA ACONTECE AQUI, USANDO OS PARÂMETROS ---
             return dbutils.secrets.get(scope=scope, key=key)
         except Exception:
             logging.error(f"Falha ao buscar segredo '{key}' do escopo '{scope}'. Verifique se o segredo existe e as permissões estão corretas.")
             return None
     else:
+        # Fallback para desenvolvimento local
         env_var = f"DB_{scope.upper().replace('-', '_')}_{key.upper().replace('-', '_')}"
         logging.warning(f"Buscando segredo em variável de ambiente: {env_var}")
         return os.getenv(env_var)
 
 # --- Configurações de Segredos ---
+# Define o escopo e a chave a serem usados na chamada da função get_secret
 SECRET_SCOPE = "bemol-data-secrets"
 SENDGRID_API_KEY_NAME = "sendgrid-api-key"
 
@@ -44,8 +47,6 @@ MAGALU_CATEGORIES = {
 
 # --- Nomes de Tabela Delta ---
 BRONZE_LAYER_PATH = "bronze.magalu_{}"
-
-# --- Databricks ---
 DATABRICKS_TABLE = "bol.feed_varejo_vtex"
 
 # --- Embeddings ---
@@ -53,7 +54,8 @@ EMBEDDING_MODEL = 'paraphrase-multilingual-mpnet-base-v2'
 SIMILARITY_THRESHOLD = 0.85
 
 # --- Reporting & Email ---
-SENDGRID_API_KEY = get_secret(SECRET_SCOPE, SENDGRID_API_KEY_NAME)
+# --- USO DA FUNÇÃO COM O ESCOPO E CHAVE CORRETOS ---
+SENDGRID_API_KEY = get_secret(scope=SECRET_SCOPE, key=SENDGRID_API_KEY_NAME)
 FROM_EMAIL = "seu_email_corporativo@bemol.com.br"
 TO_EMAILS = ["equipe.comercial@bemol.com.br"]
 EMAIL_SUBJECT = "Análise de Concorrência de Preços - Magazine Luiza" 
