@@ -18,21 +18,18 @@ def get_secret(scope: str, key: str) -> str | None:
     if dbutils:
         try:
             logging.info(f"Buscando segredo '{key}' no escopo '{scope}' do Databricks.")
-            # --- A CHAMADA CRÍTICA ACONTECE AQUI, USANDO OS PARÂMETROS ---
             return dbutils.secrets.get(scope=scope, key=key)
-        except Exception:
-            logging.error(f"Falha ao buscar segredo '{key}' do escopo '{scope}'. Verifique se o segredo existe e as permissões estão corretas.")
+        except Exception as e:
+            logging.error(f"Falha ao buscar segredo '{key}' do escopo '{scope}'. Detalhes: {e}")
             return None
     else:
-        # Fallback para desenvolvimento local
         env_var = f"DB_{scope.upper().replace('-', '_')}_{key.upper().replace('-', '_')}"
         logging.warning(f"Buscando segredo em variável de ambiente: {env_var}")
         return os.getenv(env_var)
 
 # --- Configurações de Segredos ---
-# Define o escopo e a chave a serem usados na chamada da função get_secret
 SECRET_SCOPE = "bemol-data-secrets"
-SENDGRID_API_KEY_NAME = "sendgrid-api-key"
+SENDGRID_API_KEY_NAME = "SendGridAPI"
 
 # --- Scraping de Categorias ---
 MAX_PAGES_PER_CATEGORY = 17
@@ -53,8 +50,7 @@ DATABRICKS_TABLE = "bol.feed_varejo_vtex"
 EMBEDDING_MODEL = 'paraphrase-multilingual-mpnet-base-v2'
 SIMILARITY_THRESHOLD = 0.85
 
-# --- Reporting & Email ---
-# --- USO DA FUNÇÃO COM O ESCOPO E CHAVE CORRETOS ---
+# --- Reporting & Email (EMAILS ATUALIZADOS) ---
 SENDGRID_API_KEY = get_secret(scope=SECRET_SCOPE, key=SENDGRID_API_KEY_NAME)
 FROM_EMAIL = "caiomiguel@bemol.com.br"
 TO_EMAILS = ["gabrielbarros@bemol.com.br"]
