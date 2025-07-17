@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.env
+venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+
+# Databricks
+.databricks/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Output files & Logs
+*.xlsx
+*.html
+*.log 
