@@ -80,6 +80,16 @@ def load_scraped_data(spark: SparkSession) -> DataFrame:
 
 def load_databricks_table(spark: SparkSession) -> DataFrame:
     logging.info(f"Carregando tabela interna {DATABRICKS_TABLE}...")
-    df = spark.sql(f"SELECT id as id_tabela, titulo as titulo_tabela, preco as preco_tabela, link as url_tabela FROM {DATABRICKS_TABLE} WHERE preco IS NOT NULL AND titulo IS NOT NULL")
+    # --- CORREÇÃO APLICADA AQUI ---
+    query = f"""
+    SELECT 
+        id as id_tabela, 
+        title as titulo_tabela, 
+        price as preco_tabela, 
+        link as url_tabela 
+    FROM {DATABRICKS_TABLE} 
+    WHERE price IS NOT NULL AND title IS NOT NULL
+    """
+    df = spark.sql(query)
     logging.info(f"{df.count()} registros carregados da tabela {DATABRICKS_TABLE}.")
     return df 
