@@ -5,10 +5,11 @@
 import sys
 import os
 
-# --- Bloco de Gerenciamento de Path (SIMPLIFICADO E CORRIGIDO) ---
-# No contexto de um notebook executado a partir de um Databricks Repo,
-# os.getcwd() retorna a raiz do repositório. Este é o método mais confiável.
-project_root = os.getcwd()
+# --- Bloco de Gerenciamento de Path (Solução Definitiva) ---
+# Define o caminho absoluto para a raiz do projeto.
+# Este é o método robusto para notebooks executados a partir do Workspace.
+project_root = "/Users/caiomiguel@bemol.com.br/web-scraping"
+
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
