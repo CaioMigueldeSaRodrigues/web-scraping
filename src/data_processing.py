@@ -1,21 +1,3 @@
-# Forçar o uso da CPU para PyTorch
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1' # Impede que PyTorch veja qualquer GPU
-os.environ['TRANSFORMERS_NO_ADAM'] = '1' # Pode ser útil para alguns modelos
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0' # Desabilita otimizações que podem depender de hardware específico em TensorFlow
-
-# Se estiver usando PyTorch (comum em sentence-transformers)
-import torch
-if torch.cuda.is_available():
-    print("CUDA está disponível, mas será forçado a usar CPU.")
-    device = torch.device("cpu")
-else:
-    print("CUDA não está disponível. Usando CPU por padrão.")
-    device = torch.device("cpu")
-
-# Para modelos do Hugging Face/Sentence Transformers que permitem especificar o dispositivo:
-# Ex: model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
-
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -25,9 +7,8 @@ from src.config import EMBEDDING_MODEL, SIMILARITY_THRESHOLD
 
 def generate_embeddings(df: pd.DataFrame, text_column: str) -> pd.DataFrame:
     logging.info(f"Gerando embeddings para a coluna '{text_column}' com '{EMBEDDING_MODEL}'...")
-    model = SentenceTransformer(EMBEDDING_MODEL, device='cpu')
-    # Alvo de execução alterado para 'cpu' para compatibilidade com clusters sem GPU.
-    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cpu')
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cuda')
     df['embedding'] = list(embeddings)
     return df
 
@@ -98,14 +79,16 @@ def format_report_for_business(df_analytical: pd.DataFrame) -> pd.DataFrame:
         exclusividade_str = "Sim" if row['exclusivo'] else "Não"
 
         if not row['exclusivo']:
+            # Linha para Bemol (VTEX)
             business_rows.append({
-                'title': row['produto_site'],
+                'title': row['produto_site'], # Usamos o título do site como mestre
                 'marketplace': 'Bemol',
                 'price': row['preco_tabela'],
                 'url': row['url_tabela'],
                 'exclusividade': exclusividade_str,
                 'diferenca_percentual': diff_percent
             })
+            # Linha para Magalu
             business_rows.append({
                 'title': row['produto_site'],
                 'marketplace': 'Magalu',
@@ -115,6 +98,7 @@ def format_report_for_business(df_analytical: pd.DataFrame) -> pd.DataFrame:
                 'diferenca_percentual': diff_percent
             })
         else:
+            # Linha apenas para o produto exclusivo da Magalu
             business_rows.append({
                 'title': row['produto_site'],
                 'marketplace': 'Magalu',
