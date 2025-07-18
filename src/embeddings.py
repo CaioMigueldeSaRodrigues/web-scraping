@@ -9,6 +9,11 @@ import torch # Importa torch para gerenciar dispositivo
 # Configuração de logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Forçar o uso de CPU e desabilitar CUDA antes de qualquer importação de torch ou sentence_transformers
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TRANSFORMERS_NO_ADAM'] = '1'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 def generate_magalu_embeddings(spark):
     # Carregue os dados
     df = spark.sql("SELECT title, price, url, categoria FROM bronze.magalu_completo").toPandas()
