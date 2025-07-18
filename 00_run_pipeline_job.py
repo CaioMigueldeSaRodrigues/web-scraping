@@ -12,10 +12,10 @@ try:
 except ImportError:
     dbutils = None # Caso não esteja em um ambiente Databricks completo, dbutils pode não estar disponível
 
-# --- Bloco de Gerenciamento de Path (Solução /dbfs/ Revisada e Comprovada) ---
-# Define o caminho absoluto do sistema de arquivos que o cluster enxerga.
-# ESTE CAMINHO *DEVE* SER O MESMO ONDE O PROJETO 'web-scraping' RESIDE NO DBFS.
-project_root = "/dbfs/Users/caiomiguel@bemol.com.br/web-scraping" # O caminho que você corrigiu
+# --- Bloco de Gerenciamento de Path (SOLUÇÃO DEFINITIVA FINAL) ---
+# Define o caminho absoluto para a raiz do projeto no ambiente do Workspace Files.
+# Este é o caminho correto que o cluster está enxergando seu projeto.
+project_root = "/Workspace/Users/caiomiguel@bemol.com.br/web-scraping"
 
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
