@@ -1,295 +1,267 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Pipeline de Benchmarking - Magalu vs Bemol
+# MAGIC 
+# MAGIC Este notebook executa o pipeline completo de análise de concorrência entre Magalu e Bemol.
+# MAGIC 
+# MAGIC ## Funcionalidades:
+# MAGIC - Extração de dados das tabelas silver
+# MAGIC - Cálculo de similaridade entre produtos
+# MAGIC - Identificação de produtos exclusivos
+# MAGIC - Análise de diferença de preços
+# MAGIC - Geração de relatórios Excel e HTML
+# MAGIC - Criação de TempView para consultas SQL
+# MAGIC - Envio de relatórios por email
 
 # COMMAND ----------
 
-# Pipeline completo para Databricks - embeddings, análises e relatórios
+# MAGIC %md
+# MAGIC ## Configuração de Widgets
+
+# COMMAND ----------
+
+# DBTITLE 1,Configuração de Parâmetros
+# Widgets para parametrização
+dbutils.widgets.text("tabela_magalu", "silver.embeddings_magalu_completo", "Tabela Magalu")
+dbutils.widgets.text("tabela_bemol", "silver.embeddings_bemol", "Tabela Bemol")
+dbutils.widgets.text("caminho_excel", "benchmarking_produtos.xlsx", "Caminho Excel")
+dbutils.widgets.text("caminho_html", "/dbfs/FileStore/relatorio_comparativo.html", "Caminho HTML")
+dbutils.widgets.text("nome_tempview", "tempview_benchmarking_pares", "Nome TempView")
+
+# Widgets para email
+dbutils.widgets.dropdown("enviar_email", "false", ["true", "false"], "Enviar Email")
+dbutils.widgets.text("destinatarios_email", "analytics@bemol.com.br", "Destinatários Email")
+dbutils.widgets.text("assunto_email", "", "Assunto Email (opcional)")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Importação de Módulos
+
+# COMMAND ----------
+
+# DBTITLE 1,Importação de Bibliotecas
+import sys
 import os
-import pandas as pd
-import numpy as np
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, ArrayType, FloatType
-from sklearn.metrics.pairwise import cosine_similarity
-from datetime import datetime
 
-# Forçar CPU para evitar erros de CUDA
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-os.environ['TRANSFORMERS_NO_ADAM'] = '1'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# Adiciona o diretório src ao path
+sys.path.append('/Workspace/Repos/web-scraping-main/src')
 
-print("🚀 Pipeline completo iniciado no Databricks")
+# Importa módulos do projeto
+from src.main import (
+    executar_pipeline_completo, 
+    executar_pipeline_com_email,
+    validar_parametros_pipeline
+)
+from src.logger_config import get_logger
 
-# COMMAND ----------
-
-# Configurar SparkSession
-spark = SparkSession.builder \
-    .appName("Benchmarking Pipeline") \
-    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.deltaCatalog") \
-    .getOrCreate()
-
-print("✅ SparkSession configurado")
+# Configura logger
+logger = get_logger(__name__)
 
 # COMMAND ----------
 
-# Função para gerar embeddings
-def generate_embeddings_for_table(spark, source_table, target_table, batch_size=250):
-    """Gera embeddings para uma tabela específica"""
-    try:
-        print(f"📊 Processando embeddings para {source_table}...")
-        
-        # Carregar dados
-        df_data = spark.sql(f"SELECT title, price, url, categoria FROM {source_table}").toPandas()
-        print(f"📊 Carregados {len(df_data)} registros de {source_table}")
-        
-        # Gerar embeddings
-        from sentence_transformers import SentenceTransformer
-        modelo = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
-        print("✅ Modelo SentenceTransformer carregado")
-        
-        embeddings = []
-        titles = df_data['title'].tolist()
-        
-        print(f"🔄 Processando {len(titles)} títulos em batches de {batch_size}...")
-        
-        for i in range(0, len(titles), batch_size):
-            batch = titles[i:i+batch_size]
-            vectors = modelo.encode(batch, show_progress_bar=True, convert_to_tensor=False, device='cpu')
-            embeddings.extend(vectors)
-            print(f"✅ Batch {i//batch_size + 1}/{(len(titles) + batch_size - 1)//batch_size} processado")
-        
-        # Adicionar embeddings
-        df_data["embedding"] = embeddings
-        print("✅ Embeddings adicionados ao DataFrame")
-        
-        # Schema
-        schema = StructType([
-            StructField("title", StringType(), True),
-            StructField("price", StringType(), True),
-            StructField("url", StringType(), True),
-            StructField("categoria", StringType(), True),
-            StructField("embedding", ArrayType(FloatType()), True)
-        ])
-        
-        # Criar DataFrame Spark e salvar
-        spark_df = spark.createDataFrame(df_data, schema=schema)
-        spark_df.write.format("delta").mode("overwrite").saveAsTable(target_table)
-        
-        print(f"✅ {target_table} criada com sucesso!")
-        return df_data
-        
-    except Exception as e:
-        print(f"❌ Erro na geração de embeddings para {source_table}: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+# MAGIC %md
+# MAGIC ## Validação de Parâmetros
 
 # COMMAND ----------
 
-# Função para análise de similaridade
-def analyze_similarity(spark, table1, table2, output_table):
-    """Analisa similaridade entre duas tabelas de embeddings"""
-    try:
-        print(f"🔍 Analisando similaridade entre {table1} e {table2}...")
-        
-        # Carregar embeddings
-        df1 = spark.sql(f"SELECT title, price, url, categoria, embedding FROM {table1}").toPandas()
-        df2 = spark.sql(f"SELECT title, price, url, categoria, embedding FROM {table2}").toPandas()
-        
-        print(f"📊 {len(df1)} produtos da {table1}")
-        print(f"📊 {len(df2)} produtos da {table2}")
-        
-        # Converter embeddings para numpy arrays
-        embeddings1 = np.array(df1['embedding'].tolist())
-        embeddings2 = np.array(df2['embedding'].tolist())
-        
-        # Calcular similaridade
-        similarity_matrix = cosine_similarity(embeddings1, embeddings2)
-        
-        # Encontrar produtos mais similares
-        results = []
-        for i, row in enumerate(similarity_matrix):
-            # Top 5 produtos mais similares
-            top_indices = np.argsort(row)[-5:][::-1]
-            for j, idx in enumerate(top_indices):
-                similarity_score = row[idx]
-                if similarity_score > 0.7:  # Threshold de similaridade
-                    results.append({
-                        'produto_origem': df1.iloc[i]['title'],
-                        'preco_origem': df1.iloc[i]['price'],
-                        'categoria_origem': df1.iloc[i]['categoria'],
-                        'produto_similar': df2.iloc[idx]['title'],
-                        'preco_similar': df2.iloc[idx]['price'],
-                        'categoria_similar': df2.iloc[idx]['categoria'],
-                        'similaridade': float(similarity_score),
-                        'data_analise': datetime.now().strftime('%Y-%m-%d')
-                    })
-        
-        # Criar DataFrame de resultados
-        if results:
-            results_df = pd.DataFrame(results)
-            
-            # Schema para resultados
-            schema = StructType([
-                StructField("produto_origem", StringType(), True),
-                StructField("preco_origem", StringType(), True),
-                StructField("categoria_origem", StringType(), True),
-                StructField("produto_similar", StringType(), True),
-                StructField("preco_similar", StringType(), True),
-                StructField("categoria_similar", StringType(), True),
-                StructField("similaridade", FloatType(), True),
-                StructField("data_analise", StringType(), True)
-            ])
-            
-            # Salvar resultados
-            spark_results = spark.createDataFrame(results_df, schema=schema)
-            spark_results.write.format("delta").mode("overwrite").saveAsTable(output_table)
-            
-            print(f"✅ {output_table} criada com {len(results)} análises de similaridade!")
-            return results_df
-        else:
-            print("⚠️ Nenhuma similaridade acima do threshold encontrada")
-            return None
-            
-    except Exception as e:
-        print(f"❌ Erro na análise de similaridade: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+# DBTITLE 1,Validação Inicial
+# Obtém parâmetros dos widgets
+tabela_magalu = dbutils.widgets.get("tabela_magalu")
+tabela_bemol = dbutils.widgets.get("tabela_bemol")
+caminho_excel = dbutils.widgets.get("caminho_excel")
+caminho_html = dbutils.widgets.get("caminho_html")
+nome_tempview = dbutils.widgets.get("nome_tempview")
+enviar_email = dbutils.widgets.get("enviar_email").lower() == "true"
+destinatarios_email = dbutils.widgets.get("destinatarios_email")
+assunto_email = dbutils.widgets.get("assunto_email")
+
+logger.info("Parâmetros configurados:")
+logger.info(f"- Tabela Magalu: {tabela_magalu}")
+logger.info(f"- Tabela Bemol: {tabela_bemol}")
+logger.info(f"- Caminho Excel: {caminho_excel}")
+logger.info(f"- Caminho HTML: {caminho_html}")
+logger.info(f"- Nome TempView: {nome_tempview}")
+logger.info(f"- Enviar Email: {enviar_email}")
+logger.info(f"- Destinatários: {destinatarios_email}")
+
+# Valida parâmetros
+if not validar_parametros_pipeline(tabela_magalu, tabela_bemol):
+    raise ValueError("Validação de parâmetros falhou. Verifique as tabelas de entrada.")
 
 # COMMAND ----------
 
-# Função para enviar relatório via SendGrid
-def send_report_via_sendgrid(analysis_results, report_date):
-    """Envia relatório de análise via SendGrid"""
-    try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
-        
-        # Configurar SendGrid (usar dbutils.secrets no Databricks)
-        try:
-            api_key = dbutils.secrets.get(scope="sendgrid", key="api_key")
-            from_email = dbutils.secrets.get(scope="sendgrid", key="from_email")
-            to_email = dbutils.secrets.get(scope="sendgrid", key="to_email")
-        except:
-            print("⚠️ Usando configurações padrão para SendGrid")
-            api_key = "YOUR_SENDGRID_API_KEY"  # Configurar no Databricks
-            from_email = "relatorios@bemol.com.br"
-            to_email = "analytics@bemol.com.br"
-        
-        # Criar conteúdo do e-mail
-        subject = f"Relatório de Análise de Concorrência - {report_date}"
-        
-        # Criar HTML do relatório
-        html_content = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                .header {{ background-color: #f0f0f0; padding: 10px; border-radius: 5px; }}
-                .stats {{ margin: 20px 0; }}
-                .product {{ border: 1px solid #ddd; margin: 10px 0; padding: 10px; border-radius: 5px; }}
-                .similarity {{ color: #007bff; font-weight: bold; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h2>📊 Relatório de Análise de Concorrência</h2>
-                <p><strong>Data:</strong> {report_date}</p>
-            </div>
-            
-            <div class="stats">
-                <h3>📈 Resumo da Análise</h3>
-                <p><strong>Total de análises:</strong> {len(analysis_results) if analysis_results is not None else 0}</p>
-                <p><strong>Produtos analisados:</strong> Magalu vs Tabela</p>
-            </div>
-        """
-        
-        if analysis_results is not None and len(analysis_results) > 0:
-            html_content += "<h3>🔍 Produtos Similares Encontrados</h3>"
-            
-            for _, row in analysis_results.iterrows():
-                similarity_percent = row['similaridade'] * 100
-                html_content += f"""
-                <div class="product">
-                    <h4>📦 {row['produto_origem'][:50]}...</h4>
-                    <p><strong>Preço:</strong> {row['preco_origem']} | <strong>Categoria:</strong> {row['categoria_origem']}</p>
-                    <hr>
-                    <h4>🔄 Similar: {row['produto_similar'][:50]}...</h4>
-                    <p><strong>Preço:</strong> {row['preco_similar']} | <strong>Categoria:</strong> {row['categoria_similar']}</p>
-                    <p class="similarity">📊 Similaridade: {similarity_percent:.1f}%</p>
-                </div>
-                """
-        else:
-            html_content += "<p>⚠️ Nenhum produto similar encontrado acima do threshold de 70%</p>"
-        
-        html_content += """
-        </body>
-        </html>
-        """
-        
-        # Criar e-mail
-        message = Mail(
-            from_email=from_email,
-            to_emails=to_email,
-            subject=subject,
-            html_content=html_content
-        )
-        
-        # Enviar e-mail
-        sg = SendGridAPIClient(api_key=api_key)
-        response = sg.send(message)
-        
-        print(f"✅ Relatório enviado via SendGrid! Status: {response.status_code}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erro ao enviar relatório via SendGrid: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+# MAGIC %md
+# MAGIC ## Execução do Pipeline
 
 # COMMAND ----------
 
-# Pipeline principal
-try:
-    print("🚀 Iniciando pipeline completo...")
+# DBTITLE 1,Execução Principal
+logger.info("Iniciando execução do pipeline de benchmarking...")
+
+# Executa pipeline baseado na configuração de email
+if enviar_email:
+    # Converte string de destinatários para lista
+    destinatarios_lista = [email.strip() for email in destinatarios_email.split(",")]
     
-    # 1. Gerar embeddings para Magalu
-    df_magalu = generate_embeddings_for_table(
-        spark=spark,
-        source_table="bronze.magalu_completo",
-        target_table="silver.embeddings_magalu_completo"
+    # Executa pipeline com email
+    resultados = executar_pipeline_com_email(
+        tabela_magalu=tabela_magalu,
+        tabela_bemol=tabela_bemol,
+        caminho_excel=caminho_excel,
+        caminho_html=caminho_html,
+        destinatarios_email=destinatarios_lista,
+        assunto_email=assunto_email if assunto_email else None
     )
-    
-    # 2. Gerar embeddings para Tabela
-    df_tabela = generate_embeddings_for_table(
-        spark=spark,
-        source_table="bronze.tabela_completo",
-        target_table="silver.embeddings_tabela_completo"
+else:
+    # Executa pipeline sem email
+    resultados = executar_pipeline_completo(
+        tabela_magalu=tabela_magalu,
+        tabela_bemol=tabela_bemol,
+        caminho_excel=caminho_excel,
+        caminho_html=caminho_html,
+        enviar_email=False
     )
-    
-    # 3. Análise de similaridade
-    if df_magalu is not None and df_tabela is not None:
-        analysis_results = analyze_similarity(
-            spark=spark,
-            table1="silver.embeddings_magalu_completo",
-            table2="silver.embeddings_tabela_completo",
-            output_table="gold.analise_similaridade_magalu_tabela"
-        )
-        
-        # 4. Enviar relatório via SendGrid
-        report_date = datetime.now().strftime('%Y-%m-%d')
-        send_report_via_sendgrid(analysis_results, report_date)
-    
-    print("✅ Pipeline completo executado com sucesso!")
-    
-except Exception as e:
-    print(f"❌ Erro durante execução: {e}")
-    import traceback
-    traceback.print_exc()
 
 # COMMAND ----------
 
-# Parar a sessão Spark
-spark.stop()
-print("✅ SparkSession finalizada") 
+# MAGIC %md
+# MAGIC ## Verificação de Resultados
+
+# COMMAND ----------
+
+# DBTITLE 1,Verificação de Status
+if resultados["status"] == "sucesso":
+    logger.info("✅ Pipeline executado com sucesso!")
+    
+    # Exibe estatísticas
+    stats = resultados["estatisticas"]
+    display(f"""
+    ## 📊 Estatísticas do Relatório
+    
+    - **Total de Produtos**: {stats.get('total_produtos', 0)}
+    - **Produtos Magalu**: {stats.get('produtos_magalu', 0)}
+    - **Produtos Bemol**: {stats.get('produtos_bemol', 0)}
+    - **Produtos Pareados**: {stats.get('produtos_pareados', 0)}
+    - **Produtos Exclusivos**: {stats.get('produtos_exclusivos', 0)}
+    
+    ### Níveis de Similaridade:
+    - **Muito Similar**: {stats.get('muito_similar', 0)}
+    - **Moderadamente Similar**: {stats.get('moderadamente_similar', 0)}
+    - **Pouco Similar**: {stats.get('pouco_similar', 0)}
+    - **Exclusivo**: {stats.get('exclusivo', 0)}
+    
+    ### Arquivos Gerados:
+    - **Excel**: {resultados["arquivo_excel"]}
+    - **HTML**: {resultados["arquivo_html"]}
+    - **TempView SQL**: {resultados["tempview_sql"]}
+    
+    ### Email:
+    - **Enviado**: {'✅ Sim' if resultados.get('email_enviado', False) else '❌ Não'}
+    """)
+    
+    # Exibe DataFrame final
+    if resultados["dataframe_final"] is not None:
+        display("## 📋 Dados Processados")
+        display(resultados["dataframe_final"])
+        
+else:
+    logger.error(f"❌ Pipeline falhou: {resultados.get('erro', 'Erro desconhecido')}")
+    raise Exception(f"Pipeline falhou: {resultados.get('erro', 'Erro desconhecido')}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Consultas SQL de Exemplo
+
+# COMMAND ----------
+
+# DBTITLE 1,Exemplos de Consultas SQL
+# Exemplo de consulta para produtos muito similares
+query_muito_similar = f"""
+SELECT title, marketplace, price, url, exclusividade, nivel_similaridade
+FROM {nome_tempview}
+WHERE nivel_similaridade = 'muito similar'
+ORDER BY price DESC
+LIMIT 10
+"""
+
+display("## 🔍 Produtos Muito Similares")
+display(spark.sql(query_muito_similar))
+
+# COMMAND ----------
+
+# Exemplo de consulta para produtos exclusivos
+query_exclusivos = f"""
+SELECT title, marketplace, price, url, exclusividade
+FROM {nome_tempview}
+WHERE exclusividade = 'sim'
+ORDER BY price DESC
+LIMIT 10
+"""
+
+display("## 🏆 Produtos Exclusivos")
+display(spark.sql(query_exclusivos))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Acesso aos Arquivos Gerados
+
+# COMMAND ----------
+
+# DBTITLE 1,Links para Arquivos
+# Exibe links para os arquivos gerados
+display("## 📁 Arquivos Gerados")
+
+# Link para Excel
+if resultados["arquivo_excel"]:
+    display(f"### 📊 Relatório Excel")
+    display(f"Arquivo: `{resultados['arquivo_excel']}`")
+
+# Link para HTML
+if resultados["arquivo_html"]:
+    display(f"### 🌐 Relatório HTML")
+    display(f"Arquivo: `{resultados['arquivo_html']}`")
+    display(f"URL: `/files/relatorio_comparativo.html`")
+
+# TempView SQL
+if resultados["tempview_sql"]:
+    display(f"### 🗄️ TempView SQL")
+    display(f"Nome: `{resultados['tempview_sql']}`")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Finalização
+
+# COMMAND ----------
+
+# DBTITLE 1,Resumo Final
+logger.info("🎉 Pipeline de benchmarking concluído com sucesso!")
+logger.info(f"📁 Arquivo Excel gerado: {resultados['arquivo_excel']}")
+logger.info(f"🌐 Arquivo HTML gerado: {resultados['arquivo_html']}")
+logger.info(f"🗄️ TempView criada: {resultados['tempview_sql']}")
+logger.info(f"📊 Total de produtos processados: {resultados['total_produtos']}")
+
+if enviar_email:
+    email_status = "✅ Enviado" if resultados.get('email_enviado', False) else "❌ Falhou"
+    logger.info(f"📧 Email: {email_status}")
+
+display("## ✅ Pipeline Concluído!")
+display(f"""
+### 📋 Resumo da Execução:
+- **Status**: {resultados["status"]}
+- **Total de Produtos**: {resultados["total_produtos"]}
+- **Arquivo Excel**: {resultados["arquivo_excel"]}
+- **Arquivo HTML**: {resultados["arquivo_html"]}
+- **TempView SQL**: {resultados["tempview_sql"]}
+- **Email Enviado**: {'✅ Sim' if resultados.get('email_enviado', False) else '❌ Não'}
+
+### 🔗 Próximos Passos:
+1. Baixe o arquivo Excel gerado
+2. Acesse o relatório HTML no navegador
+3. Use a TempView para consultas SQL personalizadas
+4. Analise os produtos exclusivos e similares
+5. Monitore diferenças de preços entre marketplaces
+""") 

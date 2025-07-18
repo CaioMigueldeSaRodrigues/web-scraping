@@ -1,0 +1,135 @@
+# 📊 Medidas DAX - Dashboard Benchmarking Bemol vs Magalu
+
+## 🎯 KPIs Principais
+
+// Total de Produtos
+Total Produtos = COUNTROWS('benchmarking_produtos')
+
+// Produtos Bemol
+Total Bemol = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[marketplace] = "Bemol"
+)
+
+// Produtos Magalu
+Total Magalu = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[marketplace] = "Magalu"
+)
+
+// Produtos Exclusivos Bemol
+Exclusivos Bemol = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[marketplace] = "Bemol",
+    'benchmarking_produtos'[exclusividade] = "sim"
+)
+
+// Produtos Exclusivos Magalu
+Exclusivos Magalu = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[marketplace] = "Magalu",
+    'benchmarking_produtos'[exclusividade] = "sim"
+)
+
+// Produtos Pareados
+Produtos Pareados = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[exclusividade] = "não"
+) / 2
+
+## 💰 Análise de Preços
+
+// Preço Médio Bemol
+Preço Médio Bemol = CALCULATE(
+    AVERAGE('benchmarking_produtos'[price]),
+    'benchmarking_produtos'[marketplace] = "Bemol"
+)
+
+// Preço Médio Magalu
+Preço Médio Magalu = CALCULATE(
+    AVERAGE('benchmarking_produtos'[price]),
+    'benchmarking_produtos'[marketplace] = "Magalu"
+)
+
+// Diferença Percentual Média (apenas produtos pareados)
+Diferença Percentual Média = CALCULATE(
+    AVERAGE('benchmarking_produtos'[diferenca_percentual]),
+    'benchmarking_produtos'[exclusividade] = "não",
+    NOT(ISBLANK('benchmarking_produtos'[diferenca_percentual]))
+)
+
+// Produtos onde Bemol é mais barata
+Bemol Mais Barata = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[marketplace] = "Bemol",
+    'benchmarking_produtos'[exclusividade] = "não",
+    'benchmarking_produtos'[price] < RELATED('benchmarking_produtos'[price])
+)
+
+// Produtos onde Magalu é mais barata
+Magalu Mais Barata = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[marketplace] = "Bemol",
+    'benchmarking_produtos'[exclusividade] = "não",
+    'benchmarking_produtos'[price] > RELATED('benchmarking_produtos'[price])
+)
+
+## 🎯 Análise de Similaridade
+
+// Produtos Muito Similares
+Muito Similares = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[nivel_similaridade] = "muito similar"
+)
+
+// Produtos Moderadamente Similares
+Moderadamente Similares = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[nivel_similaridade] = "moderadamente similar"
+)
+
+// Produtos Pouco Similares
+Pouco Similares = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[nivel_similaridade] = "pouco similar"
+)
+
+// Produtos Exclusivos
+Produtos Exclusivos = CALCULATE(
+    COUNTROWS('benchmarking_produtos'),
+    'benchmarking_produtos'[nivel_similaridade] = "exclusivo"
+)
+
+## 📊 Medidas de Competitividade
+
+// Percentual de Produtos onde Bemol é mais barata
+% Bemol Mais Barata = DIVIDE(
+    [Bemol Mais Barata],
+    [Produtos Pareados],
+    0
+)
+
+// Percentual de Produtos onde Magalu é mais barata
+% Magalu Mais Barata = DIVIDE(
+    [Magalu Mais Barata],
+    [Produtos Pareados],
+    0
+)
+
+// Vantagem Competitiva Bemol
+Vantagem Competitiva Bemol = [% Bemol Mais Barata] - [% Magalu Mais Barata]
+
+// Diferença de Preço Média (Bemol vs Magalu)
+Diferença Preço Média = 
+VAR PrecoBemol = [Preço Médio Bemol]
+VAR PrecoMagalu = [Preço Médio Magalu]
+RETURN
+    DIVIDE(PrecoMagalu - PrecoBemol, PrecoBemol, 0)
+
+## 🎨 Cores Corporativas
+
+// Cores para uso no tema
+Bemol Azul = "#0B5394"
+Bemol Laranja = "#FF6B35"
+Magalu Verde = "#00A650"
+Neutro Cinza = "#6C757D" 

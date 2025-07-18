@@ -1,122 +1,285 @@
+import re
 import pandas as pd
 import numpy as np
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import logging
-from src.config import EMBEDDING_MODEL, SIMILARITY_THRESHOLD
+from typing import Union, Optional, List, Dict, Any
+from .logger_config import get_logger
 
-def generate_embeddings(df: pd.DataFrame, column_name: str, model) -> pd.DataFrame:
-    """Gera embeddings em batches para otimizar uso de CPU."""
-    logging.info(f"Gerando embeddings em batches para '{column_name}'...")
+logger = get_logger(__name__)
+
+
+def limpar_preco(preco: Union[str, float, int]) -> float:
+    """
+    Limpa e converte preços em formato brasileiro para float.
     
-    titles = df[column_name].tolist()
-    batch_size = 250  # Ajuste conforme memória disponível
+    Args:
+        preco: Preço em formato string, float ou int
+        
+    Returns:
+        float: Preço limpo como float, 0.0 se inválido
+    """
+    try:
+        preco_str = str(preco)
+        
+        # Remove caracteres especiais invisíveis e palavras
+        preco_str = preco_str.replace('\xa0', '').replace('R$', '').replace('ou', '')
+        preco_str = preco_str.strip()
+        
+        # Captura padrão tipo 6.599,00
+        match = re.search(r'(\d{1,3}(?:\.\d{3})*,\d{2})', preco_str)
+        if match:
+            preco_str = match.group(1).replace('.', '').replace(',', '.')
+            return float(preco_str)
+            
+        # Se não bateu regex, força substituição bruta
+        preco_str = preco_str.replace('.', '').replace(',', '.')
+        return float(preco_str)
+        
+    except Exception as e:
+        logger.warning(f"Erro ao limpar preço '{preco}': {e}")
+        return 0.0
+
+
+def classificar_similaridade(score: float) -> str:
+    """
+    Classifica score de similaridade em níveis qualitativos.
     
-    embeddings = []
-    for i in range(0, len(titles), batch_size):
-        batch = titles[i:i + batch_size]
-        embeddings_batch = model.encode(
-            batch,
-            convert_to_tensor=False,
-            show_progress_bar=True,
-            device='cpu'  # Forçar uso de CPU
+    Args:
+        score: Score de similaridade (0-1 ou -1 para exclusivo)
+        
+    Returns:
+        str: Nível de similaridade
+    """
+    if score == -1:
+        return "exclusivo"
+    elif score >= 0.85:
+        return "muito similar"
+    elif score >= 0.5:
+        return "moderadamente similar"
+    else:
+        return "pouco similar"
+
+
+def percentual_diferenca(p1: float, p2: float) -> Optional[float]:
+    """
+    Calcula diferença percentual entre dois preços.
+    
+    Args:
+        p1: Primeiro preço
+        p2: Segundo preço
+        
+    Returns:
+        Optional[float]: Diferença percentual ou None se erro
+    """
+    try:
+        if p1 == 0 or p2 == 0:
+            return None
+        return abs(p1 - p2) / ((p1 + p2) / 2) * 100
+    except Exception as e:
+        logger.warning(f"Erro ao calcular diferença percentual: {e}")
+        return None
+
+
+def preparar_dataframe_embeddings(df: pd.DataFrame, marketplace: str) -> pd.DataFrame:
+    """
+    Prepara DataFrame com embeddings para processamento.
+    
+    Args:
+        df: DataFrame com embeddings
+        marketplace: Nome do marketplace
+        
+    Returns:
+        pd.DataFrame: DataFrame preparado
+    """
+    try:
+        df_copy = df.copy()
+        df_copy["marketplace"] = marketplace
+        df_copy["price"] = df_copy["price"].apply(limpar_preco)
+        df_copy["embedding"] = df_copy["embedding"].apply(np.array)
+        
+        # Remove linhas com embeddings nulos
+        df_copy = df_copy[df_copy["embedding"].notnull()]
+        
+        logger.info(f"DataFrame {marketplace} preparado: {len(df_copy)} produtos")
+        return df_copy
+        
+    except Exception as e:
+        logger.error(f"Erro ao preparar DataFrame {marketplace}: {e}")
+        raise
+
+
+def construir_url_completa(url: str, base_url: str) -> str:
+    """
+    Constrói URL completa baseada na URL base.
+    
+    Args:
+        url: URL relativa ou absoluta
+        base_url: URL base do marketplace
+        
+    Returns:
+        str: URL completa
+    """
+    if not str(url).startswith("http"):
+        return f"{base_url}{url}"
+    return url
+
+
+def identificar_produtos_exclusivos(
+    df_magalu: pd.DataFrame, 
+    df_bemol: pd.DataFrame, 
+    result: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Identifica produtos exclusivos de cada marketplace.
+    
+    Args:
+        df_magalu: DataFrame do Magalu
+        df_bemol: DataFrame da Bemol
+        result: Lista de resultados existente
+        
+    Returns:
+        List[Dict[str, Any]]: Lista atualizada com produtos exclusivos
+    """
+    try:
+        # Identifica produtos já processados
+        titulos_magalu = {r["title"] for r in result if r["marketplace"] == "Magalu"}
+        titulos_bemol = {r["title"] for r in result if r["marketplace"] == "Bemol"}
+        
+        # Adiciona produtos exclusivos do Magalu
+        for row in df_magalu[~df_magalu["title"].isin(titulos_magalu)].itertuples():
+            url = construir_url_completa(row.url, "https://www.magazineluiza.com.br")
+            result.append({
+                "title": row.title,
+                "marketplace": "Magalu",
+                "price": row.price,
+                "url": url,
+                "exclusividade": "sim",
+                "similaridade": -1
+            })
+        
+        # Adiciona produtos exclusivos da Bemol
+        for row in df_bemol[~df_bemol["title"].isin(titulos_bemol)].itertuples():
+            url = construir_url_completa(row.url, "https://www.bemol.com.br")
+            result.append({
+                "title": row.title,
+                "marketplace": "Bemol",
+                "price": row.price,
+                "url": url,
+                "exclusividade": "sim",
+                "similaridade": -1
+            })
+            
+        logger.info(f"Produtos exclusivos identificados: {len(result) - len(titulos_magalu) - len(titulos_bemol)}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Erro ao identificar produtos exclusivos: {e}")
+        raise
+
+
+def calcular_diferenca_precos_pares(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula diferença percentual de preços entre pares de produtos.
+    
+    Args:
+        df: DataFrame com produtos pareados
+        
+    Returns:
+        pd.DataFrame: DataFrame com diferença percentual calculada
+    """
+    try:
+        df_copy = df.copy()
+        
+        # Calcula diferença percentual para pares
+        df_copy["diferenca_percentual"] = df_copy.groupby(df_copy.index // 2)["price"].transform(
+            lambda x: percentual_diferenca(x.iloc[0], x.iloc[1]) if len(x) == 2 else None
         )
-        embeddings.extend(embeddings_batch.tolist())
+        
+        logger.info("Diferença percentual de preços calculada")
+        return df_copy
+        
+    except Exception as e:
+        logger.error(f"Erro ao calcular diferença de preços: {e}")
+        raise
+
+
+def remover_duplicados_por_marketplace(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove duplicados considerando apenas duplicação dentro de cada marketplace.
+    Mantém o produto mais barato em caso de duplicação.
     
-    df['embedding'] = embeddings
-    return df
+    Args:
+        df: DataFrame com produtos
+        
+    Returns:
+        pd.DataFrame: DataFrame sem duplicados
+    """
+    try:
+        df_copy = df.copy()
+        
+        # Ordena por preço crescente para manter o mais barato
+        df_copy = df_copy.sort_values(by="price", ascending=True)
+        
+        # Remove duplicados mantendo o primeiro (mais barato)
+        df_copy = df_copy.drop_duplicates(
+            subset=["title", "marketplace"], 
+            keep="first"
+        ).reset_index(drop=True)
+        
+        logger.info(f"Duplicados removidos: {len(df) - len(df_copy)} produtos")
+        return df_copy
+        
+    except Exception as e:
+        logger.error(f"Erro ao remover duplicados: {e}")
+        raise
 
-def find_similar_products(df_site: pd.DataFrame, df_tabela: pd.DataFrame) -> pd.DataFrame:
-    """Gera a tabela analítica (formato largo)."""
-    if df_site.empty:
-        logging.error("DataFrame do site está vazio. Não é possível continuar.")
-        return pd.DataFrame()
+
+def definir_colunas_relatorio(df: pd.DataFrame) -> tuple:
+    """
+    Define colunas visíveis e ocultas para relatório.
     
-    if df_tabela.empty:
-        logging.warning("DataFrame da tabela interna está vazio. Todos os produtos do site serão marcados como exclusivos.")
-        df_site['exclusivo'] = True
-        df_site['similaridade'] = 0.0
-        return df_site.rename(columns={'titulo_site': 'produto_site', 'preco_site': 'preco_site', 'url_site': 'url_site'})
-
-    logging.info("Calculando similaridade e gerando tabela analítica...")
-    site_embeddings = np.array(df_site['embedding'].tolist())
-    tabela_embeddings = np.array(df_tabela['embedding'].tolist())
-    similarity_matrix = cosine_similarity(site_embeddings, tabela_embeddings)
-
-    results = []
-    matched_site_indices = set()
-
-    for i in range(len(df_site)):
-        best_match_idx = np.argmax(similarity_matrix[i])
-        similarity_score = similarity_matrix[i][best_match_idx]
-
-        if similarity_score >= SIMILARITY_THRESHOLD:
-            site_product = df_site.iloc[i]
-            tabela_product = df_tabela.iloc[best_match_idx]
-            price_diff = ((site_product['preco_site'] - tabela_product['preco_tabela']) / tabela_product['preco_tabela']) * 100 if tabela_product['preco_tabela'] else 0
-            
-            results.append({
-                'produto_site': site_product['titulo_site'],
-                'produto_tabela': tabela_product['titulo_tabela'],
-                'similaridade': similarity_score,
-                'preco_site': site_product['preco_site'],
-                'preco_tabela': tabela_product['preco_tabela'],
-                'diferencial_percentual': price_diff,
-                'url_site': site_product['url_site'],
-                'url_tabela': tabela_product['url_tabela'],
-                'categoria_site': site_product['categoria_site'],
-                'id_tabela': tabela_product['id_tabela'],
-                'exclusivo': False
-            })
-            matched_site_indices.add(i)
-
-    exclusive_site_indices = set(range(len(df_site))) - matched_site_indices
-    for i in exclusive_site_indices:
-        site_product = df_site.iloc[i]
-        results.append({
-            'produto_site': site_product['titulo_site'], 'produto_tabela': None, 'similaridade': 0, 
-            'preco_site': site_product['preco_site'], 'preco_tabela': None, 'diferencial_percentual': None, 
-            'url_site': site_product['url_site'], 'url_tabela': None, 'categoria_site': site_product['categoria_site'], 
-            'id_tabela': None, 'exclusivo': True
-        })
-
-    final_df = pd.DataFrame(results)
-    return final_df.sort_values(by=['exclusivo', 'diferencial_percentual'], ascending=[True, False])
-
-def format_report_for_business(df_analytical: pd.DataFrame) -> pd.DataFrame:
-    """Transforma a tabela analítica (larga) no formato de relatório para negócios (longo)."""
-    logging.info("Formatando dados para o relatório de negócios...")
-    business_rows = []
+    Args:
+        df: DataFrame com dados completos
+        
+    Returns:
+        tuple: (colunas_visiveis, colunas_ocultas)
+    """
+    colunas_ocultas = ["similaridade", "nivel_similaridade", "diferenca_percentual"]
+    colunas_visiveis = [col for col in df.columns if col not in colunas_ocultas]
     
-    for _, row in df_analytical.iterrows():
-        diff_percent = f"{row['diferencial_percentual']:.2f}%" if pd.notna(row['diferencial_percentual']) else None
-        exclusividade_str = "Sim" if row['exclusivo'] else "Não"
+    return colunas_visiveis, colunas_ocultas
 
-        if not row['exclusivo']:
-            business_rows.append({
-                'title': row['produto_site'],
-                'marketplace': 'Bemol',
-                'price': row['preco_tabela'],
-                'url': row['url_tabela'],
-                'exclusividade': exclusividade_str,
-                'diferenca_percentual': diff_percent
-            })
-            business_rows.append({
-                'title': row['produto_site'],
-                'marketplace': 'Magalu',
-                'price': row['preco_site'],
-                'url': row['url_site'],
-                'exclusividade': exclusividade_str,
-                'diferenca_percentual': diff_percent
-            })
-        else:
-            business_rows.append({
-                'title': row['produto_site'],
-                'marketplace': 'Magalu',
-                'price': row['preco_site'],
-                'url': row['url_site'],
-                'exclusividade': exclusividade_str,
-                'diferenca_percentual': 'N/A'
-            })
-            
-    return pd.DataFrame(business_rows) 
+
+def limpar_e_preparar_dataframe_final(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aplica limpeza completa no DataFrame final.
+    
+    Args:
+        df: DataFrame com dados processados
+        
+    Returns:
+        pd.DataFrame: DataFrame limpo e preparado
+    """
+    try:
+        df_copy = df.copy()
+        
+        # Remove duplicados por marketplace
+        df_copy = remover_duplicados_por_marketplace(df_copy)
+        
+        # Ordena por exclusividade e similaridade
+        df_copy = df_copy.sort_values(
+            by=["exclusividade", "similaridade"], 
+            ascending=[True, False]
+        ).reset_index(drop=True)
+        
+        # Adiciona classificação de similaridade
+        df_copy["nivel_similaridade"] = df_copy["similaridade"].apply(classificar_similaridade)
+        
+        # Calcula diferença percentual de preços
+        df_copy = calcular_diferenca_precos_pares(df_copy)
+        
+        logger.info(f"DataFrame final limpo e preparado: {len(df_copy)} produtos")
+        return df_copy
+        
+    except Exception as e:
+        logger.error(f"Erro ao limpar DataFrame final: {e}")
+        raise 
