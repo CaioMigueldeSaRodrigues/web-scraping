@@ -1,58 +1,102 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Pipeline de Benchmarking - Magalu vs Bemol
+# MAGIC # 🚀 Pipeline de Benchmarking - Bemol vs Magalu
 # MAGIC 
-# MAGIC Este notebook executa o pipeline completo de análise de concorrência entre Magalu e Bemol.
+# MAGIC Este notebook executa o pipeline completo de benchmarking entre Bemol e Magazine Luiza.
 # MAGIC 
-# MAGIC ## Funcionalidades:
-# MAGIC - Extração de dados das tabelas silver
-# MAGIC - Cálculo de similaridade entre produtos
-# MAGIC - Identificação de produtos exclusivos
-# MAGIC - Análise de diferença de preços
-# MAGIC - Geração de relatórios Excel e HTML
-# MAGIC - Criação de TempView para consultas SQL
-# MAGIC - Envio de relatórios por email
+# MAGIC ## 📋 Funcionalidades:
+# MAGIC - ✅ Análise de similaridade de produtos via embeddings
+# MAGIC - ✅ Remoção de duplicados com 100% similaridade
+# MAGIC - ✅ Geração de relatórios Excel e HTML
+# MAGIC - ✅ Envio automático de email (opcional)
+# MAGIC - ✅ Criação de TempView para consultas SQL
+# MAGIC 
+# MAGIC ## ⚙️ Configuração via Widgets:
+# MAGIC - `tabela_magalu`: Tabela com embeddings do Magalu
+# MAGIC - `tabela_bemol`: Tabela com embeddings da Bemol
+# MAGIC - `caminho_excel`: Caminho do arquivo Excel
+# MAGIC - `caminho_html`: Caminho do arquivo HTML
+# MAGIC - `nome_tempview`: Nome da TempView SQL
+# MAGIC - `enviar_email`: Se deve enviar email (true/false)
+# MAGIC - `destinatarios_email`: Lista de emails destinatários
+# MAGIC - `assunto_email`: Assunto do email
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Configuração de Widgets
+# MAGIC ## 🔧 Configuração de Widgets
 
 # COMMAND ----------
 
-# DBTITLE 1,Configuração de Parâmetros
-# Widgets para parametrização
+# Configuração de widgets para parameterização
 dbutils.widgets.text("tabela_magalu", "silver.embeddings_magalu_completo", "Tabela Magalu")
 dbutils.widgets.text("tabela_bemol", "silver.embeddings_bemol", "Tabela Bemol")
-dbutils.widgets.text("caminho_excel", "benchmarking_produtos.xlsx", "Caminho Excel")
+dbutils.widgets.text("caminho_excel", "benchmarking_completo.xlsx", "Caminho Excel")
 dbutils.widgets.text("caminho_html", "/dbfs/FileStore/relatorio_comparativo.html", "Caminho HTML")
 dbutils.widgets.text("nome_tempview", "tempview_benchmarking_pares", "Nome TempView")
-
-# Widgets para email
 dbutils.widgets.dropdown("enviar_email", "false", ["true", "false"], "Enviar Email")
-dbutils.widgets.text("destinatarios_email", "analytics@bemol.com.br", "Destinatários Email")
-dbutils.widgets.text("assunto_email", "", "Assunto Email (opcional)")
+dbutils.widgets.text("destinatarios_email", "renatobolf@bemol.com.br", "Destinatários Email")
+dbutils.widgets.text("assunto_email", "Scraping - Benchmarking de produtos", "Assunto Email")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Importação de Módulos
+# MAGIC ## 🔍 Debug: Verificar Tabelas Disponíveis
 
 # COMMAND ----------
 
-# DBTITLE 1,Importação de Bibliotecas
+# Célula de debug para verificar tabelas disponíveis
+try:
+    from src.main import listar_tabelas_disponiveis
+    
+    print("🔍 Verificando tabelas disponíveis no catálogo...")
+    tabelas_info = listar_tabelas_disponiveis()
+    
+    print("\n📊 Tabelas encontradas:")
+    for nome_tabela, info in tabelas_info.items():
+        if "error" in info:
+            print(f"❌ {nome_tabela}: ERRO - {info['error']}")
+        else:
+            print(f"✅ {nome_tabela}: {info['count']} registros, {len(info['columns'])} colunas")
+            print(f"   Colunas: {info['columns']}")
+    
+    # Verifica tabelas específicas
+    tabela_magalu = dbutils.widgets.get("tabela_magalu")
+    tabela_bemol = dbutils.widgets.get("tabela_bemol")
+    
+    print(f"\n🎯 Verificando tabelas do pipeline:")
+    print(f"Tabela Magalu: {tabela_magalu}")
+    print(f"Tabela Bemol: {tabela_bemol}")
+    
+    if tabela_magalu in tabelas_info:
+        print(f"✅ Tabela Magalu encontrada")
+    else:
+        print(f"❌ Tabela Magalu NÃO encontrada")
+        
+    if tabela_bemol in tabelas_info:
+        print(f"✅ Tabela Bemol encontrada")
+    else:
+        print(f"❌ Tabela Bemol NÃO encontrada")
+        
+except Exception as e:
+    print(f"❌ Erro ao verificar tabelas: {e}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 🚀 Execução do Pipeline
+
+# COMMAND ----------
+
+# Importa módulos necessários
 import sys
 import os
 
 # Adiciona o diretório src ao path
-sys.path.append('/Workspace/Repos/web-scraping-main/src')
+sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
 
 # Importa módulos do projeto
-from src.main import (
-    executar_pipeline_completo, 
-    executar_pipeline_com_email,
-    validar_parametros_pipeline
-)
+from src.main import executar_pipeline_completo_com_email
 from src.logger_config import get_logger
 
 # Configura logger
@@ -60,208 +104,198 @@ logger = get_logger(__name__)
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Validação de Parâmetros
-
-# COMMAND ----------
-
-# DBTITLE 1,Validação Inicial
 # Obtém parâmetros dos widgets
 tabela_magalu = dbutils.widgets.get("tabela_magalu")
 tabela_bemol = dbutils.widgets.get("tabela_bemol")
 caminho_excel = dbutils.widgets.get("caminho_excel")
 caminho_html = dbutils.widgets.get("caminho_html")
 nome_tempview = dbutils.widgets.get("nome_tempview")
-enviar_email = dbutils.widgets.get("enviar_email").lower() == "true"
+enviar_email = dbutils.widgets.get("enviar_email") == "true"
 destinatarios_email = dbutils.widgets.get("destinatarios_email")
 assunto_email = dbutils.widgets.get("assunto_email")
 
-logger.info("Parâmetros configurados:")
-logger.info(f"- Tabela Magalu: {tabela_magalu}")
-logger.info(f"- Tabela Bemol: {tabela_bemol}")
-logger.info(f"- Caminho Excel: {caminho_excel}")
-logger.info(f"- Caminho HTML: {caminho_html}")
-logger.info(f"- Nome TempView: {nome_tempview}")
-logger.info(f"- Enviar Email: {enviar_email}")
-logger.info(f"- Destinatários: {destinatarios_email}")
-
-# Valida parâmetros
-if not validar_parametros_pipeline(tabela_magalu, tabela_bemol):
-    raise ValueError("Validação de parâmetros falhou. Verifique as tabelas de entrada.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Execução do Pipeline
-
-# COMMAND ----------
-
-# DBTITLE 1,Execução Principal
-logger.info("Iniciando execução do pipeline de benchmarking...")
-
-# Executa pipeline baseado na configuração de email
-if enviar_email:
-    # Converte string de destinatários para lista
+# Converte string de emails para lista
+if destinatarios_email:
     destinatarios_lista = [email.strip() for email in destinatarios_email.split(",")]
+else:
+    destinatarios_lista = []
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 📊 Executando Pipeline
+
+# COMMAND ----------
+
+try:
+    print("🚀 Iniciando pipeline de benchmarking...")
+    print(f"📋 Parâmetros:")
+    print(f"  - Tabela Magalu: {tabela_magalu}")
+    print(f"  - Tabela Bemol: {tabela_bemol}")
+    print(f"  - Caminho Excel: {caminho_excel}")
+    print(f"  - Caminho HTML: {caminho_html}")
+    print(f"  - Nome TempView: {nome_tempview}")
+    print(f"  - Enviar Email: {enviar_email}")
+    print(f"  - Destinatários: {destinatarios_lista}")
+    print(f"  - Assunto: {assunto_email}")
     
-    # Executa pipeline com email
-    resultados = executar_pipeline_com_email(
+    # Executa pipeline
+    resultados = executar_pipeline_completo_com_email(
         tabela_magalu=tabela_magalu,
         tabela_bemol=tabela_bemol,
         caminho_excel=caminho_excel,
         caminho_html=caminho_html,
+        nome_tempview=nome_tempview,
+        enviar_email=enviar_email,
         destinatarios_email=destinatarios_lista,
-        assunto_email=assunto_email if assunto_email else None
+        assunto_email=assunto_email
     )
-else:
-    # Executa pipeline sem email
-    resultados = executar_pipeline_completo(
-        tabela_magalu=tabela_magalu,
-        tabela_bemol=tabela_bemol,
-        caminho_excel=caminho_excel,
-        caminho_html=caminho_html,
-        enviar_email=False
-    )
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Verificação de Resultados
-
-# COMMAND ----------
-
-# DBTITLE 1,Verificação de Status
-if resultados["status"] == "sucesso":
-    logger.info("✅ Pipeline executado com sucesso!")
     
-    # Exibe estatísticas
-    stats = resultados["estatisticas"]
-    display(f"""
-    ## 📊 Estatísticas do Relatório
-    
-    - **Total de Produtos**: {stats.get('total_produtos', 0)}
-    - **Produtos Magalu**: {stats.get('produtos_magalu', 0)}
-    - **Produtos Bemol**: {stats.get('produtos_bemol', 0)}
-    - **Produtos Pareados**: {stats.get('produtos_pareados', 0)}
-    - **Produtos Exclusivos**: {stats.get('produtos_exclusivos', 0)}
-    
-    ### Níveis de Similaridade:
-    - **Muito Similar**: {stats.get('muito_similar', 0)}
-    - **Moderadamente Similar**: {stats.get('moderadamente_similar', 0)}
-    - **Pouco Similar**: {stats.get('pouco_similar', 0)}
-    - **Exclusivo**: {stats.get('exclusivo', 0)}
-    
-    ### Arquivos Gerados:
-    - **Excel**: {resultados["arquivo_excel"]}
-    - **HTML**: {resultados["arquivo_html"]}
-    - **TempView SQL**: {resultados["tempview_sql"]}
-    
-    ### Email:
-    - **Enviado**: {'✅ Sim' if resultados.get('email_enviado', False) else '❌ Não'}
-    """)
-    
-    # Exibe DataFrame final
-    if resultados["dataframe_final"] is not None:
-        display("## 📋 Dados Processados")
-        display(resultados["dataframe_final"])
+    # Verifica resultados
+    if resultados["status"] == "sucesso":
+        print("\n✅ Pipeline executado com sucesso!")
+        print(f"📊 Estatísticas:")
+        stats = resultados["estatisticas"]
+        print(f"  - Total de produtos: {stats.get('total_produtos', 0)}")
+        print(f"  - Produtos pareados: {stats.get('produtos_pareados', 0)}")
+        print(f"  - Produtos exclusivos: {stats.get('produtos_exclusivos', 0)}")
+        print(f"  - Produtos Magalu: {stats.get('produtos_magalu', 0)}")
+        print(f"  - Produtos Bemol: {stats.get('produtos_bemol', 0)}")
         
-else:
-    logger.error(f"❌ Pipeline falhou: {resultados.get('erro', 'Erro desconhecido')}")
-    raise Exception(f"Pipeline falhou: {resultados.get('erro', 'Erro desconhecido')}")
+        print(f"\n📁 Arquivos gerados:")
+        print(f"  - Excel: {resultados['caminho_excel']}")
+        print(f"  - HTML: {resultados['caminho_html']}")
+        print(f"  - TempView: {resultados['nome_tempview']}")
+        
+        if enviar_email:
+            print(f"\n📧 Email:")
+            print(f"  - Enviado: {resultados.get('email_enviado', False)}")
+            print(f"  - Destinatários: {destinatarios_lista}")
+        
+        # Exibe DataFrame final
+        df_final = resultados["df_final"]
+        print(f"\n📋 Resumo do DataFrame final:")
+        print(f"  - Shape: {df_final.shape}")
+        print(f"  - Colunas: {list(df_final.columns)}")
+        
+        # Exibe primeiras linhas
+        display(df_final.head(10))
+        
+    else:
+        print(f"\n❌ Erro no pipeline: {resultados.get('erro', 'Erro desconhecido')}")
+        
+except Exception as e:
+    print(f"❌ Erro crítico no pipeline: {e}")
+    import traceback
+    traceback.print_exc()
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Consultas SQL de Exemplo
+# MAGIC ## 🔍 Consultas SQL de Exemplo
 
 # COMMAND ----------
 
-# DBTITLE 1,Exemplos de Consultas SQL
-# Exemplo de consulta para produtos muito similares
-query_muito_similar = f"""
-SELECT title, marketplace, price, url, exclusividade, nivel_similaridade
-FROM {nome_tempview}
-WHERE nivel_similaridade = 'muito similar'
-ORDER BY price DESC
-LIMIT 10
-"""
-
-display("## 🔍 Produtos Muito Similares")
-display(spark.sql(query_muito_similar))
-
-# COMMAND ----------
-
-# Exemplo de consulta para produtos exclusivos
-query_exclusivos = f"""
-SELECT title, marketplace, price, url, exclusividade
-FROM {nome_tempview}
-WHERE exclusividade = 'sim'
-ORDER BY price DESC
-LIMIT 10
-"""
-
-display("## 🏆 Produtos Exclusivos")
-display(spark.sql(query_exclusivos))
+# Exemplo de consultas SQL para a TempView criada
+if 'resultados' in locals() and resultados.get("status") == "sucesso":
+    nome_tempview = resultados["nome_tempview"]
+    
+    print(f"🔍 Exemplos de consultas SQL para '{nome_tempview}':")
+    
+    # Consulta 1: Produtos pareados ordenados por similaridade
+    query1 = f"""
+    SELECT title, marketplace, price, exclusividade, similaridade
+    FROM {nome_tempview}
+    WHERE exclusividade = 'não'
+    ORDER BY similaridade DESC
+    LIMIT 10
+    """
+    
+    print(f"\n1. Top 10 produtos mais similares:")
+    print(query1)
+    
+    # Consulta 2: Produtos exclusivos
+    query2 = f"""
+    SELECT title, marketplace, price, url
+    FROM {nome_tempview}
+    WHERE exclusividade = 'sim'
+    ORDER BY marketplace, price DESC
+    """
+    
+    print(f"\n2. Produtos exclusivos:")
+    print(query2)
+    
+    # Consulta 3: Estatísticas por marketplace
+    query3 = f"""
+    SELECT 
+        marketplace,
+        COUNT(*) as total_produtos,
+        COUNT(CASE WHEN exclusividade = 'sim' THEN 1 END) as exclusivos,
+        COUNT(CASE WHEN exclusividade = 'não' THEN 1 END) as pareados,
+        AVG(price) as preco_medio
+    FROM {nome_tempview}
+    GROUP BY marketplace
+    """
+    
+    print(f"\n3. Estatísticas por marketplace:")
+    print(query3)
+    
+    # Executa consulta de exemplo
+    try:
+        print(f"\n📊 Executando consulta de exemplo...")
+        df_exemplo = spark.sql(query1)
+        display(df_exemplo)
+    except Exception as e:
+        print(f"❌ Erro ao executar consulta: {e}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Acesso aos Arquivos Gerados
+# MAGIC ## 📁 Links para Arquivos Gerados
 
 # COMMAND ----------
 
-# DBTITLE 1,Links para Arquivos
 # Exibe links para os arquivos gerados
-display("## 📁 Arquivos Gerados")
-
-# Link para Excel
-if resultados["arquivo_excel"]:
-    display(f"### 📊 Relatório Excel")
-    display(f"Arquivo: `{resultados['arquivo_excel']}`")
-
-# Link para HTML
-if resultados["arquivo_html"]:
-    display(f"### 🌐 Relatório HTML")
-    display(f"Arquivo: `{resultados['arquivo_html']}`")
-    display(f"URL: `/files/relatorio_comparativo.html`")
-
-# TempView SQL
-if resultados["tempview_sql"]:
-    display(f"### 🗄️ TempView SQL")
-    display(f"Nome: `{resultados['tempview_sql']}`")
+if 'resultados' in locals() and resultados.get("status") == "sucesso":
+    print("📁 Acesso aos Arquivos Gerados:")
+    
+    # Link para Excel
+    excel_path = resultados["caminho_excel"]
+    print(f"📊 Relatório Excel: {excel_path}")
+    
+    # Link para HTML
+    html_path = resultados["caminho_html"]
+    print(f"🌐 Relatório HTML: {html_path}")
+    
+    # Link para TempView
+    tempview_name = resultados["nome_tempview"]
+    print(f"🔍 TempView SQL: {tempview_name}")
+    
+    # Comandos para download (se necessário)
+    print(f"\n💾 Comandos para download:")
+    print(f"# Download do Excel")
+    print(f"dbutils.fs.cp('{excel_path}', '/tmp/benchmarking.xlsx')")
+    print(f"dbutils.fs.ls('/tmp/benchmarking.xlsx')")
+    
+    print(f"\n# Download do HTML")
+    print(f"dbutils.fs.cp('{html_path}', '/tmp/relatorio.html')")
+    print(f"dbutils.fs.ls('/tmp/relatorio.html')")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Finalização
-
-# COMMAND ----------
-
-# DBTITLE 1,Resumo Final
-logger.info("🎉 Pipeline de benchmarking concluído com sucesso!")
-logger.info(f"📁 Arquivo Excel gerado: {resultados['arquivo_excel']}")
-logger.info(f"🌐 Arquivo HTML gerado: {resultados['arquivo_html']}")
-logger.info(f"🗄️ TempView criada: {resultados['tempview_sql']}")
-logger.info(f"📊 Total de produtos processados: {resultados['total_produtos']}")
-
-if enviar_email:
-    email_status = "✅ Enviado" if resultados.get('email_enviado', False) else "❌ Falhou"
-    logger.info(f"📧 Email: {email_status}")
-
-display("## ✅ Pipeline Concluído!")
-display(f"""
-### 📋 Resumo da Execução:
-- **Status**: {resultados["status"]}
-- **Total de Produtos**: {resultados["total_produtos"]}
-- **Arquivo Excel**: {resultados["arquivo_excel"]}
-- **Arquivo HTML**: {resultados["arquivo_html"]}
-- **TempView SQL**: {resultados["tempview_sql"]}
-- **Email Enviado**: {'✅ Sim' if resultados.get('email_enviado', False) else '❌ Não'}
-
-### 🔗 Próximos Passos:
-1. Baixe o arquivo Excel gerado
-2. Acesse o relatório HTML no navegador
-3. Use a TempView para consultas SQL personalizadas
-4. Analise os produtos exclusivos e similares
-5. Monitore diferenças de preços entre marketplaces
-""") 
+# MAGIC ## ✅ Pipeline Concluído
+# MAGIC 
+# MAGIC O pipeline de benchmarking foi executado com sucesso!
+# MAGIC 
+# MAGIC ### 📊 Próximos Passos:
+# MAGIC 1. **Analisar relatórios** gerados
+# MAGIC 2. **Consultar TempView** para análises adicionais
+# MAGIC 3. **Configurar job** para execução automática
+# MAGIC 4. **Implementar dashboard** Power BI
+# MAGIC 
+# MAGIC ### 🔧 Configuração de Job:
+# MAGIC - **Notebook**: Este notebook
+# MAGIC - **Cluster**: Runtime 11.3+ com 2+ workers
+# MAGIC - **Agendamento**: Diário às 06:00 AM
+# MAGIC - **Parâmetros**: Configurar widgets conforme necessário 

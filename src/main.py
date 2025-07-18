@@ -14,6 +14,47 @@ from .reporting import (
 logger = get_logger(__name__)
 
 
+def listar_tabelas_disponiveis() -> dict:
+    """
+    Lista todas as tabelas disponíveis no catálogo para debug.
+    
+    Returns:
+        dict: Informações sobre as tabelas disponíveis
+    """
+    try:
+        tabelas_info = {}
+        tabelas_existentes = spark.catalog.listTables()
+        
+        for table in tabelas_existentes:
+            try:
+                # Tenta contar registros
+                count = spark.table(table.name).count()
+                
+                # Tenta obter estrutura
+                sample = spark.table(table.name).limit(1).toPandas()
+                colunas = list(sample.columns) if not sample.empty else []
+                
+                tabelas_info[table.name] = {
+                    "database": table.database,
+                    "count": count,
+                    "columns": colunas,
+                    "type": table.tableType
+                }
+                
+            except Exception as e:
+                tabelas_info[table.name] = {
+                    "error": str(e),
+                    "database": table.database,
+                    "type": table.tableType
+                }
+        
+        return tabelas_info
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao listar tabelas: {e}")
+        return {}
+
+
 def validar_parametros_pipeline(
     tabela_magalu: str,
     tabela_bemol: str
@@ -29,35 +70,91 @@ def validar_parametros_pipeline(
         bool: True se parâmetros são válidos
     """
     try:
-        # Verifica se as tabelas existem
-        tabelas_existentes = spark.catalog.listTables()
-        nomes_tabelas = [table.name for table in tabelas_existentes]
+        logger.info(f"🔍 Validando parâmetros do pipeline...")
+        logger.info(f"Tabela Magalu: {tabela_magalu}")
+        logger.info(f"Tabela Bemol: {tabela_bemol}")
         
-        if tabela_magalu not in nomes_tabelas:
-            logger.error(f"Tabela {tabela_magalu} não encontrada")
-            return False
+        # Verifica se as tabelas existem
+        try:
+            tabelas_existentes = spark.catalog.listTables()
+            nomes_tabelas = [table.name for table in tabelas_existentes]
+            logger.info(f"Tabelas disponíveis: {nomes_tabelas}")
             
-        if tabela_bemol not in nomes_tabelas:
-            logger.error(f"Tabela {tabela_bemol} não encontrada")
+            if tabela_magalu not in nomes_tabelas:
+                logger.error(f"❌ Tabela {tabela_magalu} não encontrada")
+                logger.error(f"Tabelas disponíveis: {nomes_tabelas}")
+                return False
+                
+            if tabela_bemol not in nomes_tabelas:
+                logger.error(f"❌ Tabela {tabela_bemol} não encontrada")
+                logger.error(f"Tabelas disponíveis: {nomes_tabelas}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao listar tabelas: {e}")
             return False
         
         # Verifica se as tabelas têm dados
-        count_magalu = spark.table(tabela_magalu).count()
-        count_bemol = spark.table(tabela_bemol).count()
-        
-        if count_magalu == 0:
-            logger.error(f"Tabela {tabela_magalu} está vazia")
+        try:
+            logger.info(f"📊 Verificando dados da tabela {tabela_magalu}")
+            count_magalu = spark.table(tabela_magalu).count()
+            logger.info(f"Tabela {tabela_magalu}: {count_magalu} registros")
+            
+            if count_magalu == 0:
+                logger.error(f"❌ Tabela {tabela_magalu} está vazia")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao verificar tabela {tabela_magalu}: {e}")
             return False
             
-        if count_bemol == 0:
-            logger.error(f"Tabela {tabela_bemol} está vazia")
+        try:
+            logger.info(f"📊 Verificando dados da tabela {tabela_bemol}")
+            count_bemol = spark.table(tabela_bemol).count()
+            logger.info(f"Tabela {tabela_bemol}: {count_bemol} registros")
+            
+            if count_bemol == 0:
+                logger.error(f"❌ Tabela {tabela_bemol} está vazia")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao verificar tabela {tabela_bemol}: {e}")
             return False
         
-        logger.info(f"Validação concluída: {tabela_magalu} ({count_magalu} produtos), {tabela_bemol} ({count_bemol} produtos)")
+        # Verifica se as tabelas têm as colunas necessárias
+        try:
+            logger.info("🔍 Verificando estrutura das tabelas...")
+            
+            # Verifica tabela Magalu
+            df_magalu_sample = spark.table(tabela_magalu).limit(1).toPandas()
+            colunas_necessarias = ["title", "price", "url", "embedding"]
+            colunas_faltantes = [col for col in colunas_necessarias if col not in df_magalu_sample.columns]
+            
+            if colunas_faltantes:
+                logger.error(f"❌ Tabela {tabela_magalu} está faltando colunas: {colunas_faltantes}")
+                logger.info(f"Colunas disponíveis: {list(df_magalu_sample.columns)}")
+                return False
+                
+            # Verifica tabela Bemol
+            df_bemol_sample = spark.table(tabela_bemol).limit(1).toPandas()
+            colunas_faltantes = [col for col in colunas_necessarias if col not in df_bemol_sample.columns]
+            
+            if colunas_faltantes:
+                logger.error(f"❌ Tabela {tabela_bemol} está faltando colunas: {colunas_faltantes}")
+                logger.info(f"Colunas disponíveis: {list(df_bemol_sample.columns)}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao verificar estrutura das tabelas: {e}")
+            return False
+        
+        logger.info(f"✅ Validação concluída com sucesso:")
+        logger.info(f"  - {tabela_magalu}: {count_magalu} produtos")
+        logger.info(f"  - {tabela_bemol}: {count_bemol} produtos")
         return True
         
     except Exception as e:
-        logger.error(f"Erro na validação de parâmetros: {e}")
+        logger.error(f"❌ Erro geral na validação de parâmetros: {e}")
         return False
 
 
@@ -79,8 +176,17 @@ def executar_pipeline_benchmarking(
         logger.info("🚀 Iniciando pipeline de benchmarking")
         
         # Valida parâmetros
+        logger.info("🔍 Iniciando validação de parâmetros...")
         if not validar_parametros_pipeline(tabela_magalu, tabela_bemol):
-            raise ValueError("Parâmetros inválidos para o pipeline")
+            error_msg = f"❌ Validação de parâmetros falhou. Verifique as tabelas de entrada:"
+            error_msg += f"\n  - Tabela Magalu: {tabela_magalu}"
+            error_msg += f"\n  - Tabela Bemol: {tabela_bemol}"
+            error_msg += f"\n\nVerifique se:"
+            error_msg += f"\n  1. As tabelas existem no catálogo"
+            error_msg += f"\n  2. As tabelas contêm dados"
+            error_msg += f"\n  3. As tabelas têm as colunas necessárias: title, price, url, embedding"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         # Carrega dados das tabelas
         logger.info("📊 Carregando dados das tabelas")
