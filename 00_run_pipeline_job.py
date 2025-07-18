@@ -9,7 +9,6 @@ import os
 # No contexto de um notebook executado a partir do Workspace,
 # os.getcwd() retorna a raiz do diretório do projeto.
 project_root = os.getcwd()
-
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
