@@ -1,3 +1,21 @@
+# Forçar o uso da CPU para PyTorch
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1' # Impede que PyTorch veja qualquer GPU
+os.environ['TRANSFORMERS_NO_ADAM'] = '1' # Pode ser útil para alguns modelos
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0' # Desabilita otimizações que podem depender de hardware específico em TensorFlow
+
+# Se estiver usando PyTorch (comum em sentence-transformers)
+import torch
+if torch.cuda.is_available():
+    print("CUDA está disponível, mas será forçado a usar CPU.")
+    device = torch.device("cpu")
+else:
+    print("CUDA não está disponível. Usando CPU por padrão.")
+    device = torch.device("cpu")
+
+# Para modelos do Hugging Face/Sentence Transformers que permitem especificar o dispositivo:
+# Ex: model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
