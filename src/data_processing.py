@@ -5,12 +5,25 @@ from sklearn.metrics.pairwise import cosine_similarity
 import logging
 from src.config import EMBEDDING_MODEL, SIMILARITY_THRESHOLD
 
-def generate_embeddings(df: pd.DataFrame, text_column: str) -> pd.DataFrame:
-    logging.info(f"Gerando embeddings para a coluna '{text_column}' com '{EMBEDDING_MODEL}'...")
-    model = SentenceTransformer(EMBEDDING_MODEL)
-    # Alvo de execução alterado para 'cpu' para compatibilidade com clusters sem GPU.
-    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cpu')
-    df['embedding'] = list(embeddings)
+def generate_embeddings(df: pd.DataFrame, column_name: str, model) -> pd.DataFrame:
+    """Gera embeddings em batches para otimizar uso de CPU."""
+    logging.info(f"Gerando embeddings em batches para '{column_name}'...")
+    
+    titles = df[column_name].tolist()
+    batch_size = 250  # Ajuste conforme memória disponível
+    
+    embeddings = []
+    for i in range(0, len(titles), batch_size):
+        batch = titles[i:i + batch_size]
+        embeddings_batch = model.encode(
+            batch,
+            convert_to_tensor=False,
+            show_progress_bar=True,
+            device='cpu'  # Forçar uso de CPU
+        )
+        embeddings.extend(embeddings_batch.tolist())
+    
+    df['embedding'] = embeddings
     return df
 
 def find_similar_products(df_site: pd.DataFrame, df_tabela: pd.DataFrame) -> pd.DataFrame:
