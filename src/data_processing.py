@@ -8,7 +8,8 @@ from src.config import EMBEDDING_MODEL, SIMILARITY_THRESHOLD
 def generate_embeddings(df: pd.DataFrame, text_column: str) -> pd.DataFrame:
     logging.info(f"Gerando embeddings para a coluna '{text_column}' com '{EMBEDDING_MODEL}'...")
     model = SentenceTransformer(EMBEDDING_MODEL)
-    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cuda')
+    # Alvo de execução alterado para 'cpu' para compatibilidade com clusters sem GPU.
+    embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cpu')
     df['embedding'] = list(embeddings)
     return df
 
@@ -79,16 +80,14 @@ def format_report_for_business(df_analytical: pd.DataFrame) -> pd.DataFrame:
         exclusividade_str = "Sim" if row['exclusivo'] else "Não"
 
         if not row['exclusivo']:
-            # Linha para Bemol (VTEX)
             business_rows.append({
-                'title': row['produto_site'], # Usamos o título do site como mestre
+                'title': row['produto_site'],
                 'marketplace': 'Bemol',
                 'price': row['preco_tabela'],
                 'url': row['url_tabela'],
                 'exclusividade': exclusividade_str,
                 'diferenca_percentual': diff_percent
             })
-            # Linha para Magalu
             business_rows.append({
                 'title': row['produto_site'],
                 'marketplace': 'Magalu',
@@ -98,7 +97,6 @@ def format_report_for_business(df_analytical: pd.DataFrame) -> pd.DataFrame:
                 'diferenca_percentual': diff_percent
             })
         else:
-            # Linha apenas para o produto exclusivo da Magalu
             business_rows.append({
                 'title': row['produto_site'],
                 'marketplace': 'Magalu',
