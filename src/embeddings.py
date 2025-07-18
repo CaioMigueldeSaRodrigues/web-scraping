@@ -14,21 +14,29 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 os.environ['TRANSFORMERS_NO_ADAM'] = '1'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-def generate_magalu_embeddings(spark):
+def generate_embeddings(spark, source_table, target_table, batch_size=250):
+    """
+    Função genérica para gerar embeddings de qualquer tabela.
+    
+    Args:
+        spark: SparkSession
+        source_table: Nome da tabela fonte (ex: "bronze.magalu_completo")
+        target_table: Nome da tabela destino (ex: "silver.embeddings_magalu_completo")
+        batch_size: Tamanho do batch para processamento (padrão: 250)
+    """
     # Carregue os dados
-    df = spark.sql("SELECT title, price, url, categoria FROM bronze.magalu_completo").toPandas()
+    df = spark.sql(f"SELECT title, price, url, categoria FROM {source_table}").toPandas()
 
     # Inicialize o modelo com CPU
     modelo = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
 
-    # Defina o batch size
-    batch_size = 250
-
     # Realize o embedding em batch
     embeddings = []
-    for i in range(0, len(df), batch_size):
-        batch = df['title'].iloc[i:i+batch_size]
-        embeddings.extend(modelo.encode(batch, show_progress_bar=False, convert_to_tensor=False))
+    titles = df['title'].tolist()
+    for i in range(0, len(titles), batch_size):
+        batch = titles[i:i+batch_size]
+        vectors = modelo.encode(batch, show_progress_bar=True, convert_to_tensor=False, device='cpu')
+        embeddings.extend(vectors)
 
     # Adicione os embeddings ao DataFrame
     df["embedding"] = embeddings
@@ -46,42 +54,22 @@ def generate_magalu_embeddings(spark):
     spark_df = spark.createDataFrame(df, schema=schema)
 
     # Salve o DataFrame como tabela Delta
-    spark_df.write.format("delta").mode("overwrite").saveAsTable("silver.embeddings_magalu_completo")
+    spark_df.write.format("delta").mode("overwrite").saveAsTable(target_table)
 
-    print("✅ silver.embeddings_magalu_completo criada com sucesso.")
+    print(f"✅ {target_table} criada com sucesso.")
+
+def generate_magalu_embeddings(spark):
+    """Função específica para embeddings do Magalu"""
+    generate_embeddings(
+        spark=spark,
+        source_table="bronze.magalu_completo",
+        target_table="silver.embeddings_magalu_completo"
+    )
 
 def generate_tabela_embeddings(spark):
-    # Carregue os dados
-    df = spark.sql("SELECT title, price, url, categoria FROM bronze.tabela_completo").toPandas()
-
-    # Inicialize o modelo com CPU
-    modelo = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
-
-    # Defina o batch size
-    batch_size = 250
-
-    # Realize o embedding em batch
-    embeddings = []
-    for i in range(0, len(df), batch_size):
-        batch = df['title'].iloc[i:i+batch_size]
-        embeddings.extend(modelo.encode(batch, show_progress_bar=False, convert_to_tensor=False))
-
-    # Adicione os embeddings ao DataFrame
-    df["embedding"] = embeddings
-
-    # Defina o schema
-    schema = StructType([
-        StructField("title", StringType(), True),
-        StructField("price", StringType(), True),
-        StructField("url", StringType(), True),
-        StructField("categoria", StringType(), True),
-        StructField("embedding", ArrayType(FloatType()), True)
-    ])
-
-    # Crie o DataFrame Spark
-    spark_df = spark.createDataFrame(df, schema=schema)
-
-    # Salve o DataFrame como tabela Delta
-    spark_df.write.format("delta").mode("overwrite").saveAsTable("silver.embeddings_tabela_completo")
-
-    print("✅ silver.embeddings_tabela_completo criada com sucesso.") 
+    """Função específica para embeddings da Tabela"""
+    generate_embeddings(
+        spark=spark,
+        source_table="bronze.tabela_completo",
+        target_table="silver.embeddings_tabela_completo"
+    ) 
