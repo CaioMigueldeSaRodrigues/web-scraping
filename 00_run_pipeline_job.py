@@ -4,20 +4,22 @@
 
 import sys
 import os
-import logging
 
-# --- Bloco de Gerenciamento de Path ---
-# Usa os.getcwd() que, no contexto de um notebook executado a partir de um Repo,
-# aponta para a raiz desse repositório. Isso garante que o pacote 'src' seja encontrado.
-project_root = os.getcwd()
+# Método robusto para obter o caminho raiz do repositório a partir de um notebook.
+# Usa dbutils para encontrar o caminho do próprio notebook e extrai o diretório pai.
+try:
+    notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    project_root = os.path.dirname(notebook_path)
+except NameError:
+    # Fallback para o caso de execução fora de um notebook Databricks
+    project_root = os.getcwd()
+
+# Adiciona a raiz ao sys.path se ainda não estiver lá.
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # COMMAND ----------
 
-# Importa a função principal do seu pacote Python
 from src.main import run_pipeline
 
-print(f"Iniciando a execução do pipeline a partir do wrapper notebook. CWD: {project_root}")
-run_pipeline()
-print("Execução do pipeline concluída.") 
+run_pipeline() 
