@@ -25,7 +25,7 @@ from src.config import EMBEDDING_MODEL, SIMILARITY_THRESHOLD
 
 def generate_embeddings(df: pd.DataFrame, text_column: str) -> pd.DataFrame:
     logging.info(f"Gerando embeddings para a coluna '{text_column}' com '{EMBEDDING_MODEL}'...")
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    model = SentenceTransformer(EMBEDDING_MODEL, device='cpu')
     # Alvo de execução alterado para 'cpu' para compatibilidade com clusters sem GPU.
     embeddings = model.encode(df[text_column].tolist(), show_progress_bar=True, device='cpu')
     df['embedding'] = list(embeddings)
