@@ -667,11 +667,29 @@ def executar_pipeline_robusto(tabela_magalu: str, tabela_bemol: str) -> Dict[str
         # Cria TempView se há dados
         if not df_final.empty:
             try:
-                spark_df = spark.createDataFrame(df_final)
+                # Remove coluna embedding para evitar problemas de tipo
+                df_final_sem_embedding = df_final.drop(columns=['embedding'])
+                
+                spark_df = spark.createDataFrame(df_final_sem_embedding)
                 spark_df.createOrReplaceTempView("tempview_benchmarking_pares")
                 print("✅ TempView criada com sucesso")
+                print(f"   📋 Colunas na TempView: {list(df_final_sem_embedding.columns)}")
             except Exception as e:
                 print(f"⚠️ Erro ao criar TempView: {e}")
+                print(f"   💡 Tentando criar TempView sem colunas problemáticas...")
+                
+                # Fallback: cria TempView apenas com colunas básicas
+                try:
+                    colunas_basicas = ['title', 'price', 'url', 'marketplace']
+                    df_basico = df_final[colunas_basicas].copy()
+                    spark_df_basico = spark.createDataFrame(df_basico)
+                    spark_df_basico.createOrReplaceTempView("tempview_benchmarking_pares")
+                    print("✅ TempView criada com colunas básicas")
+                    print(f"   📋 Colunas: {colunas_basicas}")
+                except Exception as e2:
+                    print(f"❌ Erro ao criar TempView básica: {e2}")
+        else:
+            print("⚠️ DataFrame vazio - TempView não criada")
         
         # Calcula estatísticas
         stats = {
