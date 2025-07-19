@@ -50,8 +50,38 @@ try:
     import sys
     import os
     
-    # Adiciona o diretório src ao path - corrigindo o caminho do repositório
-    sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping/src')
+    # Lista de possíveis caminhos para o repositório
+    possiveis_caminhos = [
+        '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping/src',
+        '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src',
+        '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main',
+        '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping',
+        '/Workspace/Repos/web-scraping/src',
+        '/Workspace/Repos/web-scraping-main/src',
+        '/Workspace/Repos/web-scraping',
+        '/Workspace/Repos/web-scraping-main'
+    ]
+    
+    print("🔍 Tentando encontrar o caminho correto do repositório...")
+    
+    caminho_encontrado = None
+    for caminho in possiveis_caminhos:
+        if os.path.exists(caminho):
+            print(f"✅ Caminho encontrado: {caminho}")
+            sys.path.append(caminho)
+            caminho_encontrado = caminho
+            break
+        else:
+            print(f"❌ Caminho não existe: {caminho}")
+    
+    if not caminho_encontrado:
+        print("⚠️ Nenhum caminho encontrado. Tentando listar diretórios...")
+        try:
+            import subprocess
+            result = subprocess.run(['ls', '/Workspace/Repos/'], capture_output=True, text=True)
+            print(f"Conteúdo de /Workspace/Repos/: {result.stdout}")
+        except:
+            print("Não foi possível listar diretórios")
     
     print("🔍 Verificando tabelas disponíveis no catálogo...")
     
@@ -70,7 +100,19 @@ try:
             print("✅ Função encontrada via import alternativo")
         except Exception as e2:
             print(f"❌ Erro no import alternativo: {e2}")
-            raise
+            print("🔄 Tentando import direto do arquivo...")
+            
+            # Tenta importar diretamente do arquivo
+            try:
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("main", caminho_encontrado + "/main.py")
+                main_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(main_module)
+                listar_tabelas_disponiveis = main_module.listar_tabelas_disponiveis
+                print("✅ Função encontrada via import direto do arquivo")
+            except Exception as e3:
+                print(f"❌ Erro no import direto do arquivo: {e3}")
+                raise
     
     # Executa a função
     tabelas_info = listar_tabelas_disponiveis()
@@ -127,8 +169,38 @@ except Exception as e:
 import sys
 import os
 
-# Adiciona o diretório src ao path - corrigindo o caminho do repositório
-sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping/src')
+# Lista de possíveis caminhos para o repositório
+possiveis_caminhos = [
+    '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping/src',
+    '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src',
+    '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main',
+    '/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping',
+    '/Workspace/Repos/web-scraping/src',
+    '/Workspace/Repos/web-scraping-main/src',
+    '/Workspace/Repos/web-scraping',
+    '/Workspace/Repos/web-scraping-main'
+]
+
+print("🔍 Tentando encontrar o caminho correto do repositório...")
+
+caminho_encontrado = None
+for caminho in possiveis_caminhos:
+    if os.path.exists(caminho):
+        print(f"✅ Caminho encontrado: {caminho}")
+        sys.path.append(caminho)
+        caminho_encontrado = caminho
+        break
+    else:
+        print(f"❌ Caminho não existe: {caminho}")
+
+if not caminho_encontrado:
+    print("⚠️ Nenhum caminho encontrado. Tentando listar diretórios...")
+    try:
+        import subprocess
+        result = subprocess.run(['ls', '/Workspace/Repos/'], capture_output=True, text=True)
+        print(f"Conteúdo de /Workspace/Repos/: {result.stdout}")
+    except:
+        print("Não foi possível listar diretórios")
 
 # Importa módulos do projeto usando imports diretos
 try:
@@ -153,7 +225,28 @@ except ImportError as e:
         print("✅ Imports alternativos bem-sucedidos")
     except Exception as e2:
         print(f"❌ Erro no import alternativo: {e2}")
-        raise
+        print("🔄 Tentando import direto do arquivo...")
+        
+        # Tenta importar diretamente do arquivo
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("main", caminho_encontrado + "/main.py")
+            main_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(main_module)
+            
+            executar_pipeline_completo_com_email = main_module.executar_pipeline_completo_com_email
+            listar_tabelas_disponiveis = main_module.listar_tabelas_disponiveis
+            
+            # Tenta importar logger
+            spec_logger = importlib.util.spec_from_file_location("logger_config", caminho_encontrado + "/logger_config.py")
+            logger_module = importlib.util.module_from_spec(spec_logger)
+            spec_logger.loader.exec_module(logger_module)
+            get_logger = logger_module.get_logger
+            
+            print("✅ Imports diretos do arquivo bem-sucedidos")
+        except Exception as e3:
+            print(f"❌ Erro no import direto do arquivo: {e3}")
+            raise
 
 # Configura logger
 logger = get_logger(__name__)
