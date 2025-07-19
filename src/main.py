@@ -3,15 +3,35 @@
 
 import pandas as pd
 from typing import Optional, Tuple, Dict, Any
-from .logger_config import get_logger
-from .embeddings import processar_embeddings_completos
-from .reporting import (
-    gerar_relatorio_benchmarking,
-    obter_estatisticas_relatorio,
-    enviar_email_relatorio
-)
 
-logger = get_logger(__name__)
+# Imports com tratamento de erro
+try:
+    from .logger_config import get_logger
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+try:
+    from .embeddings import processar_embeddings_completos
+except ImportError:
+    def processar_embeddings_completos(*args, **kwargs):
+        raise NotImplementedError("Módulo embeddings não disponível")
+
+try:
+    from .reporting import (
+        gerar_relatorio_benchmarking,
+        obter_estatisticas_relatorio,
+        enviar_email_relatorio
+    )
+except ImportError:
+    def gerar_relatorio_benchmarking(*args, **kwargs):
+        raise NotImplementedError("Módulo reporting não disponível")
+    def obter_estatisticas_relatorio(*args, **kwargs):
+        raise NotImplementedError("Módulo reporting não disponível")
+    def enviar_email_relatorio(*args, **kwargs):
+        raise NotImplementedError("Módulo reporting não disponível")
 
 
 def listar_tabelas_disponiveis() -> dict:
