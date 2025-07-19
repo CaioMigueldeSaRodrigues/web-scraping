@@ -50,8 +50,8 @@ try:
     import sys
     import os
     
-    # Adiciona o diretório src ao path
-    sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
+    # Adiciona o diretório src ao path - corrigindo o caminho do repositório
+    sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping/src')
     
     print("🔍 Verificando tabelas disponíveis no catálogo...")
     
@@ -127,8 +127,8 @@ except Exception as e:
 import sys
 import os
 
-# Adiciona o diretório src ao path
-sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
+# Adiciona o diretório src ao path - corrigindo o caminho do repositório
+sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping/src')
 
 # Importa módulos do projeto usando imports diretos
 try:
