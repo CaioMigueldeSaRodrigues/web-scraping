@@ -130,11 +130,30 @@ import os
 # Adiciona o diretório src ao path
 sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
 
-# Importa módulos do projeto usando imports limpos
-from src import (
-    executar_pipeline_completo_com_email,
-    get_logger
-)
+# Importa módulos do projeto usando imports diretos
+try:
+    from src.main import (
+        executar_pipeline_completo_com_email,
+        listar_tabelas_disponiveis
+    )
+    from src.logger_config import get_logger
+    print("✅ Imports diretos bem-sucedidos")
+except ImportError as e:
+    print(f"❌ Erro no import direto: {e}")
+    print("🔧 Tentando import alternativo...")
+    
+    try:
+        import src.main as main_module
+        import src.logger_config as logger_module
+        
+        executar_pipeline_completo_com_email = main_module.executar_pipeline_completo_com_email
+        listar_tabelas_disponiveis = main_module.listar_tabelas_disponiveis
+        get_logger = logger_module.get_logger
+        
+        print("✅ Imports alternativos bem-sucedidos")
+    except Exception as e2:
+        print(f"❌ Erro no import alternativo: {e2}")
+        raise
 
 # Configura logger
 logger = get_logger(__name__)

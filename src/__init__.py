@@ -24,6 +24,7 @@ try:
         validar_parametros_pipeline,
         listar_tabelas_disponiveis
     )
+    print("✅ Imports do módulo main bem-sucedidos")
 except ImportError as e:
     print(f"⚠️ Aviso: Erro ao importar funções do módulo main: {e}")
     # Define funções placeholder se não conseguirem ser importadas
@@ -51,6 +52,7 @@ try:
         remover_duplicados_por_marketplace,
         limpar_e_preparar_dataframe_final
     )
+    print("✅ Imports de data_processing bem-sucedidos")
 except ImportError as e:
     print(f"⚠️ Aviso: Erro ao importar funções de data_processing: {e}")
     # Define funções placeholder
@@ -75,6 +77,7 @@ try:
         processar_embeddings_completos,
         calcular_similaridade_embeddings
     )
+    print("✅ Imports de embeddings bem-sucedidos")
 except ImportError as e:
     print(f"⚠️ Aviso: Erro ao importar funções de embeddings: {e}")
     def processar_embeddings_completos(*args, **kwargs):
@@ -90,6 +93,7 @@ try:
         obter_estatisticas_relatorio,
         exportar_relatorio_benchmarking_excel
     )
+    print("✅ Imports de reporting bem-sucedidos")
 except ImportError as e:
     print(f"⚠️ Aviso: Erro ao importar funções de reporting: {e}")
     def gerar_relatorio_benchmarking(*args, **kwargs):
@@ -108,6 +112,7 @@ try:
         PRECO_THRESHOLD,
         EMAIL_CONFIG
     )
+    print("✅ Imports de config bem-sucedidos")
 except ImportError as e:
     print(f"⚠️ Aviso: Erro ao importar configurações: {e}")
     SIMILARIDADE_THRESHOLD = 0.8
@@ -117,6 +122,7 @@ except ImportError as e:
 # Imports de logging
 try:
     from .logger_config import get_logger
+    print("✅ Imports de logger_config bem-sucedidos")
 except ImportError as e:
     print(f"⚠️ Aviso: Erro ao importar logger: {e}")
     def get_logger(*args, **kwargs):
