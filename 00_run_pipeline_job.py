@@ -41,102 +41,6 @@ dbutils.widgets.text("assunto_email", "Scraping - Benchmarking de produtos", "As
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 🔍 Debug: Verificar Tabelas Disponíveis
-
-# COMMAND ----------
-
-# Célula de debug para verificar tabelas disponíveis
-try:
-    import sys
-    import os
-    
-    print("🔍 Verificando tabelas disponíveis no catálogo...")
-    
-    # Função local para listar tabelas (não depende de imports externos)
-    def listar_tabelas_disponiveis_local() -> dict:
-        """
-        Lista todas as tabelas disponíveis no catálogo para debug.
-        """
-        try:
-            tabelas_info = {}
-            tabelas_existentes = spark.catalog.listTables()
-            
-            for table in tabelas_existentes:
-                try:
-                    # Tenta contar registros
-                    count = spark.table(table.name).count()
-                    
-                    # Tenta obter estrutura
-                    sample = spark.table(table.name).limit(1).toPandas()
-                    colunas = list(sample.columns) if not sample.empty else []
-                    
-                    tabelas_info[table.name] = {
-                        "database": table.database,
-                        "count": count,
-                        "columns": colunas,
-                        "type": table.tableType
-                    }
-                    
-                except Exception as e:
-                    tabelas_info[table.name] = {
-                        "error": str(e),
-                        "database": table.database,
-                        "type": table.tableType
-                    }
-            
-            return tabelas_info
-            
-        except Exception as e:
-            print(f"❌ Erro ao listar tabelas: {e}")
-            return {}
-    
-    # Executa a função local
-    tabelas_info = listar_tabelas_disponiveis_local()
-    
-    print("\n📊 Tabelas encontradas:")
-    for nome_tabela, info in tabelas_info.items():
-        if "error" in info:
-            print(f"❌ {nome_tabela}: ERRO - {info['error']}")
-        else:
-            print(f"✅ {nome_tabela}: {info['count']} registros, {len(info['columns'])} colunas")
-            print(f"   Colunas: {info['columns']}")
-    
-    # Verifica tabelas específicas
-    tabela_magalu = dbutils.widgets.get("tabela_magalu")
-    tabela_bemol = dbutils.widgets.get("tabela_bemol")
-    
-    print(f"\n🎯 Verificando tabelas do pipeline:")
-    print(f"Tabela Magalu: {tabela_magalu}")
-    print(f"Tabela Bemol: {tabela_bemol}")
-    
-    if tabela_magalu in tabelas_info:
-        print(f"✅ Tabela Magalu encontrada")
-    else:
-        print(f"❌ Tabela Magalu NÃO encontrada")
-        
-    if tabela_bemol in tabelas_info:
-        print(f"✅ Tabela Bemol encontrada")
-    else:
-        print(f"❌ Tabela Bemol NÃO encontrada")
-        
-except Exception as e:
-    print(f"❌ Erro ao verificar tabelas: {e}")
-    import traceback
-    traceback.print_exc()
-    
-    # Fallback: lista tabelas de forma básica
-    print("\n🔄 Tentando listagem básica de tabelas...")
-    try:
-        tabelas_basicas = spark.catalog.listTables()
-        print("📋 Tabelas disponíveis no catálogo:")
-        for tabela in tabelas_basicas:
-            print(f"  - {tabela.name} ({tabela.database})")
-    except Exception as e2:
-        print(f"❌ Erro na listagem básica: {e2}")
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC ## 🚀 Execução do Pipeline
 
 # COMMAND ----------
@@ -588,7 +492,7 @@ def executar_pipeline_robusto(tabela_magalu: str, tabela_bemol: str) -> Dict[str
     try:
         print("🚀 Iniciando pipeline robusto...")
         
-        # Executa verificação de necessidade de web scraping
+        # Executa verificação de necessidade de web scraping PRIMEIRO
         print("🔍 Verificando necessidade de web scraping...")
         verificacao_web_scraping = verificar_necessidade_web_scraping(tabela_magalu, tabela_bemol)
         
@@ -604,6 +508,9 @@ def executar_pipeline_robusto(tabela_magalu: str, tabela_bemol: str) -> Dict[str
                 "verificacao": verificacao_web_scraping,
                 "erro": "Web scraping precisa ser executado primeiro"
             }
+        
+        # Só executa as outras verificações se web scraping não for necessário
+        print("✅ Web scraping já executado. Continuando com pipeline...")
         
         # Executa verificação completa da estrutura de dados
         print("🔍 Verificando estrutura completa dos dados de web scraping...")
