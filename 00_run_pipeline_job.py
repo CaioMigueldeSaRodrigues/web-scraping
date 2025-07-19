@@ -47,7 +47,13 @@ dbutils.widgets.text("assunto_email", "Scraping - Benchmarking de produtos", "As
 
 # Célula de debug para verificar tabelas disponíveis
 try:
-    from src.main import listar_tabelas_disponiveis
+    import sys
+    import os
+    
+    # Adiciona o diretório src ao path
+    sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
+    
+    from src import listar_tabelas_disponiveis
     
     print("🔍 Verificando tabelas disponíveis no catálogo...")
     tabelas_info = listar_tabelas_disponiveis()
@@ -95,9 +101,11 @@ import os
 # Adiciona o diretório src ao path
 sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
 
-# Importa módulos do projeto
-from src.main import executar_pipeline_completo_com_email
-from src.logger_config import get_logger
+# Importa módulos do projeto usando imports limpos
+from src import (
+    executar_pipeline_completo_com_email,
+    get_logger
+)
 
 # Configura logger
 logger = get_logger(__name__)
