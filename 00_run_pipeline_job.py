@@ -53,9 +53,26 @@ try:
     # Adiciona o diretório src ao path
     sys.path.append('/Workspace/Repos/caio.miguel@bemol.com.br/web-scraping-main/src')
     
-    from src import listar_tabelas_disponiveis
-    
     print("🔍 Verificando tabelas disponíveis no catálogo...")
+    
+    # Tenta importar a função diretamente
+    try:
+        from src.main import listar_tabelas_disponiveis
+        print("✅ Função listar_tabelas_disponiveis importada com sucesso")
+    except ImportError as e:
+        print(f"❌ Erro ao importar listar_tabelas_disponiveis: {e}")
+        print("🔧 Tentando import alternativo...")
+        
+        # Tenta importar o módulo completo
+        try:
+            import src.main as main_module
+            listar_tabelas_disponiveis = main_module.listar_tabelas_disponiveis
+            print("✅ Função encontrada via import alternativo")
+        except Exception as e2:
+            print(f"❌ Erro no import alternativo: {e2}")
+            raise
+    
+    # Executa a função
     tabelas_info = listar_tabelas_disponiveis()
     
     print("\n📊 Tabelas encontradas:")
@@ -86,6 +103,18 @@ try:
         
 except Exception as e:
     print(f"❌ Erro ao verificar tabelas: {e}")
+    import traceback
+    traceback.print_exc()
+    
+    # Fallback: lista tabelas de forma básica
+    print("\n🔄 Tentando listagem básica de tabelas...")
+    try:
+        tabelas_basicas = spark.catalog.listTables()
+        print("📋 Tabelas disponíveis no catálogo:")
+        for tabela in tabelas_basicas:
+            print(f"  - {tabela.name} ({tabela.database})")
+    except Exception as e2:
+        print(f"❌ Erro na listagem básica: {e2}")
 
 # COMMAND ----------
 
