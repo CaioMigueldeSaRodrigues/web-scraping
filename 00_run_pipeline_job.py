@@ -53,6 +53,179 @@ from typing import Optional, Dict, Any
 
 print("🚀 Iniciando pipeline de benchmarking...")
 
+def padronizar_dados_magalu(df_magalu: pd.DataFrame) -> pd.DataFrame:
+    """
+    Padroniza dados do Magalu para análise.
+    """
+    try:
+        df_padronizado = df_magalu.copy()
+        
+        # Padroniza colunas
+        df_padronizado = df_padronizado.rename(columns={
+            'title': 'title',
+            'price': 'price',
+            'url': 'url',
+            'categoria': 'categoria'
+        })
+        
+        # Limpa preços
+        df_padronizado['price'] = df_padronizado['price'].astype(str).apply(
+            lambda x: float(str(x).replace('R$', '').replace('.', '').replace(',', '.').strip()) 
+            if str(x).replace('R$', '').replace('.', '').replace(',', '.').strip().replace('.', '').isdigit() 
+            else 0.0
+        )
+        
+        # Padroniza URLs
+        df_padronizado['url'] = df_padronizado['url'].apply(
+            lambda x: f"https://www.magazineluiza.com.br{x}" if not str(x).startswith('http') else x
+        )
+        
+        # Remove colunas desnecessárias
+        colunas_manter = ['title', 'price', 'url', 'categoria', 'embedding']
+        df_padronizado = df_padronizado[colunas_manter]
+        
+        print(f"✅ Dados Magalu padronizados: {len(df_padronizado)} produtos")
+        return df_padronizado
+        
+    except Exception as e:
+        print(f"❌ Erro ao padronizar dados Magalu: {e}")
+        return df_magalu
+
+def padronizar_dados_bemol(df_bemol: pd.DataFrame) -> pd.DataFrame:
+    """
+    Padroniza dados da Bemol para análise.
+    """
+    try:
+        df_padronizado = df_bemol.copy()
+        
+        # Padroniza colunas
+        df_padronizado = df_padronizado.rename(columns={
+            'title': 'title',
+            'price': 'price',
+            'link': 'url'
+        })
+        
+        # Limpa preços
+        df_padronizado['price'] = df_padronizado['price'].astype(str).apply(
+            lambda x: float(str(x).replace('R$', '').replace('.', '').replace(',', '.').strip()) 
+            if str(x).replace('R$', '').replace('.', '').replace(',', '.').strip().replace('.', '').isdigit() 
+            else 0.0
+        )
+        
+        # Padroniza URLs
+        df_padronizado['url'] = df_padronizado['url'].apply(
+            lambda x: f"https://www.bemol.com.br{x}" if not str(x).startswith('http') else x
+        )
+        
+        # Remove colunas desnecessárias
+        colunas_manter = ['title', 'price', 'url', 'brand', 'id']
+        df_padronizado = df_padronizado[colunas_manter]
+        
+        print(f"✅ Dados Bemol padronizados: {len(df_padronizado)} produtos")
+        return df_padronizado
+        
+    except Exception as e:
+        print(f"❌ Erro ao padronizar dados Bemol: {e}")
+        return df_bemol
+
+def calcular_similaridade_produtos(df_magalu: pd.DataFrame, df_bemol: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula similaridade entre produtos usando embeddings.
+    """
+    try:
+        from sklearn.metrics.pairwise import cosine_similarity
+        import numpy as np
+        
+        print("🔍 Calculando similaridade entre produtos...")
+        
+        # Prepara embeddings
+        embeddings_magalu = np.array(df_magalu['embedding'].tolist())
+        embeddings_bemol = np.array(df_bemol['embedding'].tolist())
+        
+        # Calcula matriz de similaridade
+        similarity_matrix = cosine_similarity(embeddings_magalu, embeddings_bemol)
+        
+        # Encontra melhores matches
+        best_matches = np.argmax(similarity_matrix, axis=1)
+        best_scores = np.max(similarity_matrix, axis=1)
+        
+        # Cria pares de produtos similares
+        pares_similares = []
+        
+        for i, (magalu_idx, bemol_idx, score) in enumerate(zip(range(len(df_magalu)), best_matches, best_scores)):
+            if score >= 0.5:  # Threshold de similaridade
+                # Produto Magalu
+                pares_similares.append({
+                    'title': df_magalu.iloc[magalu_idx]['title'],
+                    'price': df_magalu.iloc[magalu_idx]['price'],
+                    'url': df_magalu.iloc[magalu_idx]['url'],
+                    'marketplace': 'Magalu',
+                    'similaridade': score,
+                    'exclusividade': 'não',
+                    'par_id': i
+                })
+                
+                # Produto Bemol correspondente
+                pares_similares.append({
+                    'title': df_bemol.iloc[bemol_idx]['title'],
+                    'price': df_bemol.iloc[bemol_idx]['price'],
+                    'url': df_bemol.iloc[bemol_idx]['url'],
+                    'marketplace': 'Bemol',
+                    'similaridade': score,
+                    'exclusividade': 'não',
+                    'par_id': i
+                })
+        
+        # Identifica produtos exclusivos
+        produtos_em_pares = set()
+        for par in pares_similares:
+            produtos_em_pares.add(par['title'])
+        
+        # Produtos exclusivos Magalu
+        for _, row in df_magalu.iterrows():
+            if row['title'] not in produtos_em_pares:
+                pares_similares.append({
+                    'title': row['title'],
+                    'price': row['price'],
+                    'url': row['url'],
+                    'marketplace': 'Magalu',
+                    'similaridade': -1,
+                    'exclusividade': 'sim',
+                    'par_id': -1
+                })
+        
+        # Produtos exclusivos Bemol
+        for _, row in df_bemol.iterrows():
+            if row['title'] not in produtos_em_pares:
+                pares_similares.append({
+                    'title': row['title'],
+                    'price': row['price'],
+                    'url': row['url'],
+                    'marketplace': 'Bemol',
+                    'similaridade': -1,
+                    'exclusividade': 'sim',
+                    'par_id': -1
+                })
+        
+        df_resultado = pd.DataFrame(pares_similares)
+        
+        # Calcula estatísticas
+        produtos_pareados = len([p for p in pares_similares if p['exclusividade'] == 'não'])
+        produtos_exclusivos = len([p for p in pares_similares if p['exclusividade'] == 'sim'])
+        
+        print(f"✅ Similaridade calculada:")
+        print(f"   - Produtos pareados: {produtos_pareados}")
+        print(f"   - Produtos exclusivos: {produtos_exclusivos}")
+        print(f"   - Total: {len(df_resultado)}")
+        
+        return df_resultado
+        
+    except Exception as e:
+        print(f"❌ Erro ao calcular similaridade: {e}")
+        import traceback
+        traceback.print_exc()
+        return pd.DataFrame()
+
 def verificar_necessidade_web_scraping(tabela_magalu: str, tabela_bemol: str) -> Dict[str, Any]:
     """
     Verifica se o web scraping precisa ser executado antes do pipeline.
@@ -553,34 +726,58 @@ def executar_pipeline_robusto(tabela_magalu: str, tabela_bemol: str) -> Dict[str
                 "erro": "Nenhuma tabela pôde ser carregada"
             }
         
-        # Prepara dados para processamento
-        dfs_validos = []
+        # Padroniza dados
+        print("🔧 Padronizando dados...")
         if df_magalu is not None and not df_magalu.empty:
-            df_magalu['marketplace'] = 'Magalu'
-            dfs_validos.append(df_magalu)
-            
+            df_magalu = padronizar_dados_magalu(df_magalu)
+        
         if df_bemol is not None and not df_bemol.empty:
-            df_bemol['marketplace'] = 'Bemol'
-            dfs_validos.append(df_bemol)
+            df_bemol = padronizar_dados_bemol(df_bemol)
         
-        # Combina dados
-        if dfs_validos:
-            df_final = pd.concat(dfs_validos, ignore_index=True)
+        # Calcula similaridade entre produtos
+        print("🔍 Analisando similaridade entre produtos...")
+        if df_magalu is not None and not df_magalu.empty and df_bemol is not None and not df_bemol.empty:
+            df_analise = calcular_similaridade_produtos(df_magalu, df_bemol)
         else:
-            df_final = pd.DataFrame()
+            print("⚠️ Não foi possível calcular similaridade - dados insuficientes")
+            df_analise = pd.DataFrame()
         
-        print(f"📊 Dados combinados: {len(df_final)} registros")
+        # Prepara dados para processamento
+        if not df_analise.empty:
+            df_final = df_analise
+            print(f"✅ Análise de similaridade concluída: {len(df_final)} produtos")
+        else:
+            # Fallback: combina dados sem análise
+            dfs_validos = []
+            if df_magalu is not None and not df_magalu.empty:
+                df_magalu['marketplace'] = 'Magalu'
+                dfs_validos.append(df_magalu)
+                
+            if df_bemol is not None and not df_bemol.empty:
+                df_bemol['marketplace'] = 'Bemol'
+                dfs_validos.append(df_bemol)
+            
+            # Combina dados
+            if dfs_validos:
+                df_final = pd.concat(dfs_validos, ignore_index=True)
+            else:
+                df_final = pd.DataFrame()
+            
+            print(f"⚠️ Usando dados combinados sem análise: {len(df_final)} registros")
+        
+        print(f"📊 Dados processados: {len(df_final)} registros")
         
         # Cria TempView se há dados
         if not df_final.empty:
             try:
-                # Remove coluna embedding para evitar problemas de tipo
-                df_final_sem_embedding = df_final.drop(columns=['embedding'])
+                # Remove colunas problemáticas para TempView
+                colunas_tempview = ['title', 'price', 'url', 'marketplace', 'similaridade', 'exclusividade']
+                df_tempview = df_final[colunas_tempview].copy()
                 
-                spark_df = spark.createDataFrame(df_final_sem_embedding)
+                spark_df = spark.createDataFrame(df_tempview)
                 spark_df.createOrReplaceTempView("tempview_benchmarking_pares")
                 print("✅ TempView criada com sucesso")
-                print(f"   📋 Colunas na TempView: {list(df_final_sem_embedding.columns)}")
+                print(f"   📋 Colunas na TempView: {list(df_tempview.columns)}")
             except Exception as e:
                 print(f"⚠️ Erro ao criar TempView: {e}")
                 print(f"   💡 Tentando criar TempView sem colunas problemáticas...")
@@ -598,13 +795,16 @@ def executar_pipeline_robusto(tabela_magalu: str, tabela_bemol: str) -> Dict[str
         else:
             print("⚠️ DataFrame vazio - TempView não criada")
         
-        # Calcula estatísticas
+        # Calcula estatísticas detalhadas
+        produtos_pareados = len(df_final[df_final.get('exclusividade', 'sim') == 'não']) if 'exclusividade' in df_final.columns else 0
+        produtos_exclusivos = len(df_final[df_final.get('exclusividade', 'sim') == 'sim']) if 'exclusividade' in df_final.columns else len(df_final)
+        
         stats = {
             "total_produtos": len(df_final),
             "produtos_magalu": len(df_magalu) if df_magalu is not None else 0,
             "produtos_bemol": len(df_bemol) if df_bemol is not None else 0,
-            "produtos_pareados": 0,  # Placeholder para futura implementação
-            "produtos_exclusivos": len(df_final)  # Placeholder
+            "produtos_pareados": produtos_pareados,
+            "produtos_exclusivos": produtos_exclusivos
         }
         
         print("✅ Pipeline robusto executado com sucesso")
