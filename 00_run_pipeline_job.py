@@ -149,6 +149,96 @@ from typing import Optional, Dict, Any
 
 print("🚀 Iniciando pipeline de benchmarking...")
 
+def verificar_necessidade_web_scraping(tabela_magalu: str, tabela_bemol: str) -> Dict[str, Any]:
+    """
+    Verifica se o web scraping precisa ser executado antes do pipeline.
+    """
+    verificacao = {
+        "web_scraping_necessario": False,
+        "embeddings_necessarios": False,
+        "tabelas_faltantes": [],
+        "instrucoes": []
+    }
+    
+    print("🔍 Verificando necessidade de web scraping...")
+    
+    # Verifica se a tabela de embeddings existe
+    try:
+        df_embeddings = spark.table(tabela_magalu)
+        count = df_embeddings.count()
+        if count > 0:
+            print(f"✅ Tabela {tabela_magalu} existe com {count} registros")
+            verificacao["embeddings_necessarios"] = False
+        else:
+            print(f"⚠️ Tabela {tabela_magalu} existe mas está vazia")
+            verificacao["embeddings_necessarios"] = True
+            verificacao["tabelas_faltantes"].append(tabela_magalu)
+    except Exception as e:
+        print(f"❌ Tabela {tabela_magalu} não existe")
+        verificacao["embeddings_necessarios"] = True
+        verificacao["tabelas_faltantes"].append(tabela_magalu)
+    
+    # Verifica tabelas bronze (dados de web scraping)
+    categorias_magalu = [
+        "bronze.magalu_eletroportateis",
+        "bronze.magalu_informatica", 
+        "bronze.magalu_tv_e_video",
+        "bronze.magalu_moveis",
+        "bronze.magalu_eletrodomesticos",
+        "bronze.magalu_celulares"
+    ]
+    
+    tabelas_bronze_faltantes = []
+    for tabela_bronze in categorias_magalu:
+        try:
+            df_bronze = spark.table(tabela_bronze)
+            count = df_bronze.count()
+            if count > 0:
+                print(f"✅ {tabela_bronze}: {count} registros")
+            else:
+                print(f"⚠️ {tabela_bronze}: vazia")
+                tabelas_bronze_faltantes.append(tabela_bronze)
+        except Exception as e:
+            print(f"❌ {tabela_bronze}: não existe")
+            tabelas_bronze_faltantes.append(tabela_bronze)
+    
+    # Verifica tabela unificada
+    try:
+        df_unificado = spark.table("bronze.magalu_completo")
+        count = df_unificado.count()
+        if count > 0:
+            print(f"✅ bronze.magalu_completo: {count} registros")
+        else:
+            print(f"⚠️ bronze.magalu_completo: vazia")
+            verificacao["web_scraping_necessario"] = True
+    except Exception as e:
+        print(f"❌ bronze.magalu_completo: não existe")
+        verificacao["web_scraping_necessario"] = True
+    
+    # Determina se web scraping é necessário
+    if len(tabelas_bronze_faltantes) > 0 or verificacao["embeddings_necessarios"]:
+        verificacao["web_scraping_necessario"] = True
+    
+    # Gera instruções específicas
+    if verificacao["web_scraping_necessario"]:
+        verificacao["instrucoes"].append("📋 WEB SCRAPING NECESSÁRIO:")
+        verificacao["instrucoes"].append("1. Execute o web scraping primeiro:")
+        verificacao["instrucoes"].append("   from src.scraping import scrape_and_save_all_categories")
+        verificacao["instrucoes"].append("   scrape_and_save_all_categories(spark)")
+        verificacao["instrucoes"].append("")
+        verificacao["instrucoes"].append("2. Unifique os dados:")
+        verificacao["instrucoes"].append("   from src.scraping import load_scraped_data")
+        verificacao["instrucoes"].append("   df_unificado = load_scraped_data(spark)")
+        verificacao["instrucoes"].append("   df_unificado.write.format('delta').mode('overwrite').saveAsTable('bronze.magalu_completo')")
+        verificacao["instrucoes"].append("")
+        verificacao["instrucoes"].append("3. Gere embeddings:")
+        verificacao["instrucoes"].append("   from src.embeddings import generate_magalu_embeddings")
+        verificacao["instrucoes"].append("   generate_magalu_embeddings(spark)")
+        verificacao["instrucoes"].append("")
+        verificacao["instrucoes"].append("4. Execute o pipeline novamente")
+    
+    return verificacao
+
 def verificar_estrutura_dados_web_scraping(tabela_magalu: str, tabela_bemol: str) -> Dict[str, Any]:
     """
     Verifica a estrutura específica dos dados de web scraping e embeddings.
@@ -498,6 +588,23 @@ def executar_pipeline_robusto(tabela_magalu: str, tabela_bemol: str) -> Dict[str
     try:
         print("🚀 Iniciando pipeline robusto...")
         
+        # Executa verificação de necessidade de web scraping
+        print("🔍 Verificando necessidade de web scraping...")
+        verificacao_web_scraping = verificar_necessidade_web_scraping(tabela_magalu, tabela_bemol)
+        
+        # Se web scraping é necessário, para a execução e mostra instruções
+        if verificacao_web_scraping["web_scraping_necessario"]:
+            print("\n⚠️ WEB SCRAPING NECESSÁRIO ANTES DO PIPELINE!")
+            print("📋 Execute os seguintes passos:")
+            for instrucao in verificacao_web_scraping["instrucoes"]:
+                print(f"   {instrucao}")
+            
+            return {
+                "status": "web_scraping_necessario",
+                "verificacao": verificacao_web_scraping,
+                "erro": "Web scraping precisa ser executado primeiro"
+            }
+        
         # Executa verificação completa da estrutura de dados
         print("🔍 Verificando estrutura completa dos dados de web scraping...")
         estrutura_dados = verificar_estrutura_dados_web_scraping(tabela_magalu, tabela_bemol)
@@ -762,6 +869,23 @@ try:
             print(f"\n📊 Tabela Bemol carregada:")
             print(f"  - Registros: {len(df_bemol)}")
             print(f"  - Colunas: {list(df_bemol.columns)}")
+    
+    elif resultados["status"] == "web_scraping_necessario":
+        print("\n⚠️ WEB SCRAPING NECESSÁRIO ANTES DO PIPELINE!")
+        print("📋 Execute os seguintes passos:")
+        
+        verificacao = resultados.get("verificacao", {})
+        for instrucao in verificacao.get("instrucoes", []):
+            print(f"   {instrucao}")
+        
+        print(f"\n⏱️ Tempo estimado para web scraping:")
+        print(f"   - 6 categorias × 17 páginas = ~102 páginas")
+        print(f"   - Tempo estimado: 10-15 minutos")
+        print(f"   - Produtos esperados: 1.000-2.000 produtos")
+        
+        print(f"\n🔄 Após executar o web scraping:")
+        print(f"   1. Execute este pipeline novamente")
+        print(f"   2. Os dados estarão disponíveis para benchmarking")
         
     else:
         print(f"\n❌ Erro no pipeline: {resultados.get('erro', 'Erro desconhecido')}")
