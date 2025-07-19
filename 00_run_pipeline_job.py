@@ -30,7 +30,7 @@
 
 # Configuração de widgets para parameterização
 dbutils.widgets.text("tabela_magalu", "silver.embeddings_magalu_completo", "Tabela Magalu")
-dbutils.widgets.text("tabela_bemol", "silver.embeddings_bemol", "Tabela Bemol")
+dbutils.widgets.text("tabela_bemol", "bol.feed_varejo_vtex", "Tabela Bemol")
 dbutils.widgets.text("caminho_excel", "benchmarking_completo.xlsx", "Caminho Excel")
 dbutils.widgets.text("caminho_html", "/dbfs/FileStore/relatorio_comparativo.html", "Caminho HTML")
 dbutils.widgets.text("nome_tempview", "tempview_benchmarking_pares", "Nome TempView")

@@ -160,7 +160,7 @@ def validar_parametros_pipeline(
 
 def executar_pipeline_benchmarking(
     tabela_magalu: str = "silver.embeddings_magalu_completo",
-    tabela_bemol: str = "silver.embeddings_bemol"
+    tabela_bemol: str = "bol.feed_varejo_vtex"
 ) -> Tuple[pd.DataFrame, str, str, str]:
     """
     Executa pipeline completo de benchmarking de produtos.
@@ -218,7 +218,7 @@ def executar_pipeline_benchmarking(
 
 def executar_pipeline_completo(
     tabela_magalu: str = "silver.embeddings_magalu_completo",
-    tabela_bemol: str = "silver.embeddings_bemol",
+    tabela_bemol: str = "bol.feed_varejo_vtex",
     caminho_excel: Optional[str] = None,
     caminho_html: Optional[str] = None,
     nome_tempview: Optional[str] = None
@@ -268,7 +268,7 @@ def executar_pipeline_completo(
 
 def executar_pipeline_com_email(
     tabela_magalu: str = "silver.embeddings_magalu_completo",
-    tabela_bemol: str = "silver.embeddings_bemol",
+    tabela_bemol: str = "bol.feed_varejo_vtex",
     destinatarios_email: Optional[list] = None,
     assunto_email: Optional[str] = None,
     remetente: str = "caiomiguel@bemol.com.br"
@@ -331,7 +331,7 @@ def executar_pipeline_com_email(
 
 def executar_pipeline_completo_com_email(
     tabela_magalu: str = "silver.embeddings_magalu_completo",
-    tabela_bemol: str = "silver.embeddings_bemol",
+    tabela_bemol: str = "bol.feed_varejo_vtex",
     caminho_excel: Optional[str] = None,
     caminho_html: Optional[str] = None,
     nome_tempview: Optional[str] = None,
