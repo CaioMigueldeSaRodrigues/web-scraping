@@ -1,3 +1,5 @@
+# Databricks notebook source
+
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -6,10 +8,8 @@ from pyspark.sql.functions import col
 import logging
 import time
 import re
-from src.config import MAGALU_CATEGORIES, MAX_PAGES_PER_CATEGORY, DATABRICKS_TABLE, BRONZE_LAYER_PATH
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
+# Funções auxiliares (privadas)
 def _clean_price(price_str: str) -> float | None:
     if not price_str or "indisponível" in price_str.lower(): return None
     cleaned_price = re.sub(r'[R$\s.]', '', price_str).replace(',', '.')
@@ -24,17 +24,11 @@ def _scrape_category_page(category_name: str, base_url: str, max_pages: int) -> 
         try:
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
-            logging.info(f"[{category_name}] Extraindo página {page}...")
-            soup = BeautifulSoup(response.content, 'html.parser')
-            cards = soup.select('div[data-testid="product-card-content"]')
-            if not cards:
-                logging.warning(f"[{category_name}] Nenhum produto na página {page}. Encerrando categoria.")
-                break
-            for card in cards:
+            for card in BeautifulSoup(response.content, 'html.parser').select('div[data-testid="product-card-content"]'):
                 title_tag = card.select_one('h2[data-testid="product-title"]')
-                price_tag = card.select_one('p[data-testid="price-value"]')
                 link_tag = card.find_parent('a')
                 if title_tag and link_tag:
+                    price_tag = card.select_one('p[data-testid="price-value"]')
                     products_data.append({
                         'titulo_site': title_tag.get_text(strip=True),
                         'preco_site': _clean_price(price_tag.get_text(strip=True)) if price_tag else None,
@@ -47,49 +41,29 @@ def _scrape_category_page(category_name: str, base_url: str, max_pages: int) -> 
         time.sleep(1)
     return products_data
 
-def scrape_and_save_all_categories(spark: SparkSession):
-    logging.info("--- INICIANDO SCRAPING DE TODAS AS CATEGORIAS ---")
-    for category_name, base_url in MAGALU_CATEGORIES.items():
-        products = _scrape_category_page(category_name, base_url, MAX_PAGES_PER_CATEGORY)
+# Função principal do módulo
+def execute_scraping_and_load(spark: SparkSession, config: dict) -> (DataFrame, DataFrame):
+    """Orquestra o scraping e o carregamento dos dados, retornando os DataFrames Spark."""
+    logging.info("--- INICIANDO ETAPA DE EXTRAÇÃO DE DADOS ---")
+    
+    # 1. Scraping e salvamento na camada Bronze
+    for category_name, base_url in config['MAGALU_CATEGORIES'].items():
+        products = _scrape_category_page(category_name, base_url, config['MAX_PAGES_PER_CATEGORY'])
         if products:
             spark_df = spark.createDataFrame(pd.DataFrame(products))
             spark_df = spark_df.withColumn("preco_site", col("preco_site").cast("double")).filter(col("preco_site").isNotNull())
-            table_name = BRONZE_LAYER_PATH.format(category_name.lower())
-            logging.info(f"Salvando {spark_df.count()} produtos de '{category_name}' em '{table_name}'...")
+            table_name = config['BRONZE_LAYER_PATH'].format(category_name.lower())
             spark_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table_name)
-        else:
-            logging.warning(f"[!] Nenhum produto extraído para '{category_name}'.")
 
-def load_scraped_data(spark: SparkSession) -> DataFrame:
-    logging.info("--- CARREGANDO E UNIFICANDO DADOS DA CAMADA BRONZE ---")
-    all_dfs = []
-    for category_name in MAGALU_CATEGORIES.keys():
-        table_name = BRONZE_LAYER_PATH.format(category_name.lower())
-        try:
-            all_dfs.append(spark.read.table(table_name))
-        except Exception as e:
-            logging.warning(f"Tabela '{table_name}' não encontrada. Erro: {e}")
-    if not all_dfs:
-        raise RuntimeError("Nenhuma tabela da camada bronze foi carregada. Pipeline não pode continuar.")
-    
-    unified_df = all_dfs[0]
+    # 2. Carregamento e unificação dos dados raspados
+    all_dfs = [spark.read.table(config['BRONZE_LAYER_PATH'].format(cat.lower())) for cat in config['MAGALU_CATEGORIES'].keys()]
+    df_site_spark = all_dfs[0]
     for i in range(1, len(all_dfs)):
-        unified_df = unified_df.unionByName(all_dfs[i])
-    logging.info(f"Total de {unified_df.count()} produtos unificados de {len(all_dfs)} categorias.")
-    return unified_df
+        df_site_spark = df_site_spark.unionByName(all_dfs[i])
 
-def load_databricks_table(spark: SparkSession) -> DataFrame:
-    logging.info(f"Carregando tabela interna {DATABRICKS_TABLE}...")
-    # --- CORREÇÃO APLICADA AQUI ---
-    query = f"""
-    SELECT 
-        id as id_tabela, 
-        title as titulo_tabela, 
-        price as preco_tabela, 
-        link as url_tabela 
-    FROM {DATABRICKS_TABLE} 
-    WHERE price IS NOT NULL AND title IS NOT NULL
-    """
-    df = spark.sql(query)
-    logging.info(f"{df.count()} registros carregados da tabela {DATABRICKS_TABLE}.")
-    return df 
+    # 3. Carregamento da tabela interna
+    query = f"SELECT id as id_tabela, title as titulo_tabela, price as preco_tabela, link as url_tabela FROM {config['DATABRICKS_TABLE']} WHERE price IS NOT NULL AND title IS NOT NULL"
+    df_tabela_spark = spark.sql(query)
+    
+    logging.info(f"Extração concluída. Site: {df_site_spark.count()} produtos. Tabela: {df_tabela_spark.count()} produtos.")
+    return df_site_spark, df_tabela_spark 
