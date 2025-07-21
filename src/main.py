@@ -8,7 +8,7 @@ from src.reporting import generate_business_report_excel, generate_analytical_re
 
 def run_pipeline():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info("--- INICIANDO PIPELINE DE ANÁLISE DE CONCORRÊNCIA V2.2 ---")
+    logging.info("--- INICIANDO PIPELINE DE ANÁLISE DE CONCORRÊNCIA V2.3 ---")
     spark = SparkSession.builder.appName("AnaliseConcorrenciaPipeline").enableHiveSupport().getOrCreate()
 
     # 1. Extração de Dados
@@ -20,15 +20,17 @@ def run_pipeline():
 
     # 2. Geração de Embeddings
     df_site_embedded = generate_embeddings(df_site_pandas, 'titulo_site')
+    # --- CORREÇÃO APLICADA AQUI ---
+    # Garante que os embeddings sejam gerados para a tabela da Bemol.
     df_tabela_embedded = generate_embeddings(df_tabela_pandas, 'titulo_tabela')
 
-    # 3. Geração do Relatório Analítico (Produto 1: Dados para BI e Depuração)
+    # 3. Geração do Relatório Analítico (Pareamento)
     analytical_report_df = find_similar_products(df_site_embedded, df_tabela_embedded)
     if analytical_report_df.empty:
         logging.warning("Nenhum resultado gerado na análise. Encerrando pipeline.")
         return
 
-    # 4. Formatação do Relatório de Negócios (Produto 2: Planilha para equipes)
+    # 4. Formatação do Relatório de Negócios
     business_report_df = format_report_for_business(analytical_report_df)
     
     # 5. Geração de Outputs para as equipes
