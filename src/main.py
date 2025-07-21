@@ -2,26 +2,25 @@ import sys
 import os
 import logging
 from pyspark.sql import SparkSession
+from src.config import SILVER_TABLE_NAME
 from src.scraping import scrape_and_save_all_categories, load_scraped_data, load_databricks_table
 from src.data_processing import generate_embeddings, find_similar_products, format_report_for_business
 from src.reporting import generate_business_report_excel, generate_analytical_report_excel, generate_html_report, send_email_report
 
 def run_pipeline():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info("--- INICIANDO PIPELINE DE ANÁLISE DE CONCORRÊNCIA V2.3 ---")
+    logging.info("--- INICIANDO PIPELINE DE ANÁLISE DE CONCORRÊNCIA V2.4 ---")
     spark = SparkSession.builder.appName("AnaliseConcorrenciaPipeline").enableHiveSupport().getOrCreate()
 
     # 1. Extração de Dados
     scrape_and_save_all_categories(spark)
     df_site_spark = load_scraped_data(spark)
     df_tabela_spark = load_databricks_table(spark)
-    df_site_pandas = df_site_spark.toPandas()
+    df_site_pandas = df_site_spark.toPandras()
     df_tabela_pandas = df_tabela_spark.toPandas()
 
     # 2. Geração de Embeddings
     df_site_embedded = generate_embeddings(df_site_pandas, 'titulo_site')
-    # --- CORREÇÃO APLICADA AQUI ---
-    # Garante que os embeddings sejam gerados para a tabela da Bemol.
     df_tabela_embedded = generate_embeddings(df_tabela_pandas, 'titulo_tabela')
 
     # 3. Geração do Relatório Analítico (Pareamento)
@@ -29,6 +28,13 @@ def run_pipeline():
     if analytical_report_df.empty:
         logging.warning("Nenhum resultado gerado na análise. Encerrando pipeline.")
         return
+
+    # --- AÇÃO: SALVAR O RESULTADO COMO TABELA DELTA ---
+    logging.info(f"Salvando resultado analítico na tabela Delta: {SILVER_TABLE_NAME}")
+    spark_analytical_df = spark.createDataFrame(analytical_report_df)
+    spark_analytical_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(SILVER_TABLE_NAME)
+    logging.info("Tabela Delta salva com sucesso.")
+    # ---------------------------------------------------
 
     # 4. Formatação do Relatório de Negócios
     business_report_df = format_report_for_business(analytical_report_df)

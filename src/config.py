@@ -35,15 +35,14 @@ MAGALU_CATEGORIES = {
     "Celulares": "https://www.magazineluiza.com.br/celulares-e-smartphones/l/te/?page={}"
 }
 
+# --- NOMES DE TABELAS ---
 BRONZE_LAYER_PATH = "bronze.magalu_{}"
 DATABRICKS_TABLE = "bol.feed_varejo_vtex"
+# --- ADICIONADO NOME DA TABELA DE RESULTADOS ---
+SILVER_TABLE_NAME = "main.silver.analise_concorrencia_magalu"
 
 EMBEDDING_MODEL = 'paraphrase-multilingual-mpnet-base-v2'
-# --- AJUSTE DE THRESHOLD ---
-# Limiar de similaridade para considerar dois produtos como um "match".
-# Valores mais baixos (ex: 0.75) encontrarão mais pares, mas com menor precisão.
-# Valores mais altos (ex: 0.90) encontrarão menos pares, mas com maior precisão.
-SIMILARITY_THRESHOLD = 0.80 # Reduzido de 0.85 para 0.80 para aumentar a captura de pares.
+SIMILARITY_THRESHOLD = 0.80
 
 SENDGRID_API_KEY = get_secret(scope=SECRET_SCOPE, key=SENDGRID_API_KEY_NAME)
 FROM_EMAIL = "caiomiguel@bemol.com.br"
