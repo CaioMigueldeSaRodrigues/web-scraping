@@ -3,7 +3,7 @@ import os
 import logging
 from pyspark.sql import SparkSession
 from src.config import SILVER_TABLE_NAME
-from src.scraping.scraper import scrape_magazine_luiza
+from src.modules.scraper_logic import scrape_magazine_luiza
 from src.scraping import load_scraped_data, load_databricks_table
 from src.data_processing import generate_embeddings, find_similar_products, format_report_for_business
 from src.reporting import generate_business_report_excel, generate_analytical_report_excel, generate_html_report, send_email_report
