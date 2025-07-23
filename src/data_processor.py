@@ -1,3 +1,4 @@
+# Módulo de processamento de dados, embeddings e comparação
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -5,99 +6,75 @@ from sklearn.metrics.pairwise import cosine_similarity
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 
-# --- Constantes ---
 EMBEDDING_MODEL = 'neuralmind/bert-base-portuguese-cased'
-SIMILARITY_THRESHOLD = 0.85 # Limiar para considerar um "match".
+SIMILARITY_THRESHOLD = 0.85
 
-def load_data_from_spark(spark: SparkSession, table_name: str, title_col: str, price_col: str, url_col: str, source_name: str) -> pd.DataFrame:
-    """
-    Carrega dados de uma tabela Spark, seleciona e renomeia colunas, e converte para Pandas.
-    """
+def load_spark_table_to_pandas(spark: SparkSession, table_name: str, alias: str) -> pd.DataFrame:
+    """Carrega uma tabela Spark, renomeia colunas com um alias e converte para Pandas."""
     print(f"Carregando dados de: {table_name}")
     df_spark = spark.table(table_name)
     
+    # Padroniza nomes de colunas para processamento
     df_pandas = df_spark.select(
-        col(title_col).alias(f"title_{source_name}"),
-        col(price_col).alias(f"price_{source_name}"),
-        col(url_col).alias(f"url_{source_name}")
+        col("title").alias(f"title_{alias}"),
+        col("price").alias(f"price_{alias}"),
+        col("url").alias(f"url_{alias}")
     ).toPandas()
     
-    print(f"Carregados {len(df_pandas)} registros de {source_name}.")
-    return df_pandas.dropna(subset=[f"title_{source_name}"])
+    print(f"Carregados {len(df_pandas)} registros de {table_name}.")
+    return df_pandas.dropna(subset=[f"title_{alias}"])
 
 def generate_embeddings(df: pd.DataFrame, text_column: str) -> np.ndarray:
-    """
-    Gera embeddings para uma coluna de texto de um DataFrame.
-    """
-    print(f"Gerando embeddings para a coluna '{text_column}'...")
+    """Gera embeddings para uma coluna de texto."""
+    print(f"Gerando embeddings para '{text_column}'...")
     model = SentenceTransformer(EMBEDDING_MODEL)
     texts = df[text_column].astype(str).tolist()
-    
     return model.encode(texts, show_progress_bar=True, batch_size=64)
 
-def find_best_matches(df_marketplace: pd.DataFrame, df_internal: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula a similaridade de cosseno, encontra os melhores pares e estrutura o resultado.
-    """
-    if df_marketplace.empty:
-        print("AVISO: DataFrame do marketplace está vazio.")
+def find_best_matches(df_source: pd.DataFrame, df_target: pd.DataFrame) -> pd.DataFrame:
+    """Compara dois DataFrames, encontra os melhores pares e calcula métricas."""
+    if df_source.empty:
+        print("AVISO: DataFrame de origem (source) está vazio. Retornando DataFrame vazio.")
         return pd.DataFrame()
         
-    marketplace_embeddings = generate_embeddings(df_marketplace, 'title_marketplace')
+    source_embeddings = generate_embeddings(df_source, 'title_source')
     
-    if df_internal.empty:
-        print("AVISO: DataFrame interno está vazio. Todos os produtos do marketplace serão marcados como exclusivos.")
-        df_marketplace['title_internal'] = None
-        df_marketplace['price_internal'] = np.nan
-        df_marketplace['url_internal'] = None
-        df_marketplace['similarity'] = 0.0
-        df_marketplace['exclusividade'] = 'Sim'
-        df_marketplace['diferenca_percentual'] = 0.0
-        return df_marketplace
+    if df_target.empty:
+        print("AVISO: DataFrame de destino (target) está vazio. Todos os produtos de origem serão marcados como exclusivos.")
+        df_source = df_source.rename(columns={'title_source': 'title', 'price_source': 'price', 'url_source': 'url'})
+        df_source['marketplace'] = 'Marketplace' # Placeholder
+        df_source['exclusividade'] = 'Sim'
+        df_source['diferenca_percentual'] = 0.0
+        df_source['similaridade'] = 0.0
+        return df_source
 
-    internal_embeddings = generate_embeddings(df_internal, 'title_internal')
+    target_embeddings = generate_embeddings(df_target, 'title_target')
 
-    print("Calculando matriz de similaridade de cosseno...")
-    similarity_matrix = cosine_similarity(marketplace_embeddings, internal_embeddings)
+    print("Calculando matriz de similaridade...")
+    similarity_matrix = cosine_similarity(source_embeddings, target_embeddings)
 
     results = []
-    
-    print("Encontrando melhores correspondências...")
-    for i in range(len(df_marketplace)):
+    for i in range(len(df_source)):
         best_match_idx = similarity_matrix[i].argmax()
         similarity_score = similarity_matrix[i][best_match_idx]
-
-        match_data = df_marketplace.iloc[i].to_dict()
+        match_data = df_source.iloc[i].to_dict()
 
         if similarity_score >= SIMILARITY_THRESHOLD:
-            internal_product = df_internal.iloc[best_match_idx]
-            match_data.update(internal_product.to_dict())
-            match_data['similarity'] = similarity_score
+            match_data.update(df_target.iloc[best_match_idx].to_dict())
+            match_data['similaridade'] = similarity_score
             match_data['exclusividade'] = 'Não'
         else:
-            match_data['title_internal'] = None
-            match_data['price_internal'] = np.nan
-            match_data['url_internal'] = None
-            match_data['similarity'] = similarity_score
-            match_data['exclusividade'] = 'Sim'
-        
+            match_data.update({
+                'title_target': None, 'price_target': np.nan, 'url_target': None,
+                'similaridade': similarity_score, 'exclusividade': 'Sim'
+            })
         results.append(match_data)
         
     final_df = pd.DataFrame(results)
+    final_df['diferenca_percentual'] = ((final_df['price_source'] - final_df['price_target']) / final_df['price_target']).fillna(0).replace([np.inf, -np.inf], 0) * 100
+    
+    # Renomeia colunas para o formato final da planilha
+    final_df = final_df.rename(columns={'title_source': 'title', 'price_source': 'price', 'url_source': 'url'})
+    final_df['marketplace'] = final_df.apply(lambda row: 'Bemol' if pd.notna(row['title_target']) else 'Magalu', axis=1)
 
-    final_df['diferenca_percentual'] = (
-        (final_df['price_marketplace'] - final_df['price_internal']) / final_df['price_internal']
-    ).fillna(0).replace([np.inf, -np.inf], 0) * 100
-    
-    column_order = [
-        'title_marketplace', 'price_marketplace', 'url_marketplace',
-        'title_internal', 'price_internal', 'url_internal',
-        'similarity', 'diferenca_percentual', 'exclusividade'
-    ]
-    final_df = final_df.rename(columns={
-        'title_marketplace': 'title', 
-        'price_marketplace': 'price', 
-        'url_marketplace': 'url'
-    })
-    
-    return final_df.sort_values(by='similarity', ascending=False).reset_index(drop=True) 
+    return final_df.sort_values(by=['title', 'price'], ascending=[True, True]).reset_index(drop=True) 
