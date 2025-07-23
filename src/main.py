@@ -3,7 +3,8 @@ import os
 import logging
 from pyspark.sql import SparkSession
 from src.config import SILVER_TABLE_NAME
-from src.scraping import scrape_and_save_all_categories, load_scraped_data, load_databricks_table
+from src.scraping.scraper import scrape_magazine_luiza
+from src.scraping import load_scraped_data, load_databricks_table
 from src.data_processing import generate_embeddings, find_similar_products, format_report_for_business
 from src.reporting import generate_business_report_excel, generate_analytical_report_excel, generate_html_report, send_email_report
 
@@ -13,7 +14,7 @@ def run_pipeline():
     spark = SparkSession.builder.appName("AnaliseConcorrenciaPipeline").enableHiveSupport().getOrCreate()
 
     # 1. Extração de Dados
-    scrape_and_save_all_categories(spark)
+    scrape_magazine_luiza(spark)
     df_site_spark = load_scraped_data(spark)
     df_tabela_spark = load_databricks_table(spark)
     df_site_pandas = df_site_spark.toPandras()
